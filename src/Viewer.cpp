@@ -4,7 +4,7 @@
 #include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
 
-#include "Core/Transform.h"
+#include "Core/DrawContext.h"
 #include "Objects/Cameras/Camera.h"
 #include "Objects/Lights/PointLight.h"
 #include "Objects/Primitives/Cube.h"
@@ -19,25 +19,23 @@ namespace
     Camera     camera;
     PointLight light;
 
-    // Transform du cube
-    Transform  cubeTransform;
+    Cube*  g_cube  = nullptr;   // initialisé après GLAD
+    float  gizmoScale = 1.0f;
 
-    // Matrices courantes (mises à jour chaque frame, lues par les callbacks)
-    glm::mat4  g_view(1.0f);
-    glm::mat4  g_proj(1.0f);
-    float      gizmoScale = 1.0f;
+    // Matrices courantes (lues par les callbacks)
+    glm::mat4 g_view(1.0f);
+    glm::mat4 g_proj(1.0f);
 
     // État souris
-    bool   leftDown    = false;
-    bool   middleDown  = false;
-    double lastX       = 0.0;
-    double lastY       = 0.0;
-    int    dragAxis    = -1;   // -1 = aucun, 0/1/2 = X/Y/Z
+    bool   leftDown   = false;
+    bool   middleDown = false;
+    double lastX      = 0.0;
+    double lastY      = 0.0;
+    int    dragAxis   = -1;
 }
 
 // ---- Helpers gizmo ---------------------------------------------------------
 
-// Projette un point 3D en coordonnées écran (pixels, Y vers le bas)
 static glm::vec2 worldToScreen(glm::vec3 p)
 {
     glm::vec4 clip = g_proj * g_view * glm::vec4(p, 1.0f);
@@ -46,26 +44,26 @@ static glm::vec2 worldToScreen(glm::vec3 p)
              (1.0f - ndc.y) * 0.5f * WINDOW_HEIGHT };
 }
 
-// Direction écran de l'axe i (en pixels pour 1 unité monde)
 static glm::vec2 screenAxisDir(int axis)
 {
     static constexpr glm::vec3 dirs[3] = { {1,0,0}, {0,1,0}, {0,0,1} };
-    return worldToScreen(cubeTransform.position + dirs[axis]) - worldToScreen(cubeTransform.position);
+    const glm::vec3& pos = g_cube->transform.position;
+    return worldToScreen(pos + dirs[axis]) - worldToScreen(pos);
 }
 
-// Retourne l'axe du gizmo le plus proche de la souris (-1 si aucun)
 static int gizmoHitTest(double mx, double my)
 {
     static constexpr glm::vec3 dirs[3] = { {1,0,0}, {0,1,0}, {0,0,1} };
-    const glm::vec2 mouse  = { (float)mx, (float)my };
-    const glm::vec2 origin = worldToScreen(cubeTransform.position);
-    constexpr float THRESH = 12.0f; // pixels
+    const glm::vec3& pos   = g_cube->transform.position;
+    const glm::vec2  mouse = { (float)mx, (float)my };
+    const glm::vec2  origin = worldToScreen(pos);
+    constexpr float  THRESH = 12.0f;
 
     int   best = -1;
     float minD = THRESH;
 
     for (int i = 0; i < 3; ++i) {
-        glm::vec2 tip = worldToScreen(cubeTransform.position + dirs[i] * gizmoScale);
+        glm::vec2 tip = worldToScreen(pos + dirs[i] * gizmoScale);
         glm::vec2 seg = tip - origin;
         float segLen2 = glm::dot(seg, seg);
         if (segLen2 < 1.0f) continue;
@@ -102,14 +100,12 @@ void cursorCallback(GLFWwindow*, double x, double y)
     const float dy = static_cast<float>(y - lastY);
 
     if (dragAxis >= 0) {
-        // Déplacement du cube le long de l'axe sélectionné
         glm::vec2 sa  = screenAxisDir(dragAxis);
         float     len = glm::length(sa);
         if (len > 1.0f) {
             static constexpr glm::vec3 dirs[3] = { {1,0,0}, {0,1,0}, {0,0,1} };
-            float proj      = (dx * sa.x + dy * sa.y) / len; // pixels projetés
-            float worldDelta = proj / len;                     // 1 unité = len pixels
-            cubeTransform.position += dirs[dragAxis] * worldDelta;
+            float worldDelta = (dx * sa.x + dy * sa.y) / (len * len);
+            g_cube->transform.position += dirs[dragAxis] * worldDelta;
         }
     } else {
         if (leftDown)   camera.orbit(dx, dy);
@@ -166,6 +162,7 @@ int main()
     Cube  cube;
     Grid  grid;
     Gizmo gizmo;
+    g_cube = &cube;
 
     glEnable(GL_DEPTH_TEST);
 
@@ -179,15 +176,14 @@ int main()
         g_view = camera.getView();
         g_proj = camera.getProjection(aspect);
 
-        // Le gizmo garde une taille visuelle constante quelle que soit la distance
-        gizmoScale = glm::length(camera.getPosition() - cubeTransform.position) * 0.18f;
+        gizmoScale = glm::length(camera.getPosition() - cube.transform.position) * 0.18f;
 
-        const glm::mat4 model = cubeTransform.getMatrix();
-        const glm::mat4 MVP   = g_proj * g_view * model;
+        const DrawContext ctx { g_view, g_proj, camera.getPosition(), light };
+        const glm::mat4   gridMVP = g_proj * g_view * glm::mat4(1.0f);
 
-        grid.draw(MVP);
-        cube.draw(MVP, model, light, camera.getPosition());
-        gizmo.draw(g_view, g_proj, cubeTransform.position, gizmoScale);
+        grid.draw(gridMVP);
+        cube.draw(ctx);
+        gizmo.draw(g_view, g_proj, cube.transform.position, gizmoScale);
 
         glfwSwapBuffers(p_window);
         glfwPollEvents();

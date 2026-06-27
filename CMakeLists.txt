@@ -13,20 +13,40 @@ find_package(glm CONFIG REQUIRED)
 
 add_executable(MyEngine
     src/Viewer.cpp
+
+    # Core
     src/Core/Transform.h
     src/Core/Transform.cpp
+    src/Core/Shape.h
+    src/Core/Material.h
+    src/Core/Material.cpp
+    src/Core/Mesh.h
+    src/Core/Mesh.cpp
+    src/Core/DrawContext.h
+    src/Core/Object.h
+    src/Core/Object.cpp
+
+    # Cameras
     src/Objects/Cameras/Camera.h
     src/Objects/Cameras/Camera.cpp
+
+    # Lights
     src/Objects/Lights/PointLight.h
+
+    # Primitives
     src/Objects/Primitives/Triangle.h
     src/Objects/Primitives/Triangle.cpp
     src/Objects/Primitives/Cube.h
     src/Objects/Primitives/Cube.cpp
+
+    # Display
     src/Objects/Display/Grid.h
     src/Objects/Display/Grid.cpp
     src/Objects/Display/Gizmo.h
     src/Objects/Display/Gizmo.cpp
 )
+
+target_include_directories(MyEngine PRIVATE src)
 
 target_link_libraries(MyEngine
     PRIVATE
