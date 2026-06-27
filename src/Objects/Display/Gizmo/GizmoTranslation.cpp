@@ -1,4 +1,4 @@
-#include "Gizmo.h"
+#include "GizmoTranslation.h"
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <vector>
@@ -41,7 +41,7 @@ static constexpr float SHAFTS[] = {
 
 // ---- Implémentation --------------------------------------------------------
 
-unsigned int Gizmo::compileShader(unsigned int type, const char* source)
+unsigned int GizmoTranslation::compileShader(unsigned int type, const char* source)
 {
     unsigned int shader = glCreateShader(type);
     glShaderSource(shader, 1, &source, nullptr);
@@ -56,7 +56,7 @@ unsigned int Gizmo::compileShader(unsigned int type, const char* source)
     return shader;
 }
 
-Gizmo::Gizmo()
+GizmoTranslation::GizmoTranslation()
 {
     // Shader
     unsigned int vert = compileShader(GL_VERTEX_SHADER,   VERT_SRC);
@@ -138,7 +138,7 @@ Gizmo::Gizmo()
     glBindVertexArray(0);
 }
 
-Gizmo::~Gizmo()
+GizmoTranslation::~GizmoTranslation()
 {
     glDeleteVertexArrays(1, &shaftsVAO);
     glDeleteBuffers(1, &shaftsVBO);
@@ -147,7 +147,7 @@ Gizmo::~Gizmo()
     glDeleteProgram(shaderProgram);
 }
 
-void Gizmo::draw(const glm::mat4& view, const glm::mat4& proj,
+void GizmoTranslation::draw(const glm::mat4& view, const glm::mat4& proj,
                  const glm::vec3& position, float scale)
 {
     glm::mat4 model = glm::scale(

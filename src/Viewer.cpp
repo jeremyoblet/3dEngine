@@ -10,8 +10,8 @@
 #include "Objects/Lights/PointLight.h"
 #include "Objects/Primitives/Cube.h"
 #include "Objects/Display/Grid.h"
-#include "Objects/Display/Gizmo.h"
-#include "Objects/Display/GizmoRotation.h"
+#include "Objects/Display/Gizmo/GizmoTranslation.h"
+#include "Objects/Display/Gizmo/GizmoRotation.h"
 
 namespace
 {
@@ -257,10 +257,10 @@ int main()
     glfwSetScrollCallback     (p_window, scrollCallback);
 
     // Objets (après GLAD)
-    Cube          cube;
-    Grid          grid;
-    Gizmo         gizmo;
-    GizmoRotation gizmoRotation;
+    Cube             cube;
+    Grid             grid;
+    GizmoTranslation gizmoTranslation;
+    GizmoRotation    gizmoRotation;
     g_cube = &cube;
 
     glEnable(GL_DEPTH_TEST);
@@ -283,7 +283,7 @@ int main()
 
         grid.draw(gridMVP);
         cube.draw(ctx);
-        gizmo.draw        (g_view, g_proj, cube.transform.position, gizmoScale);
+        gizmoTranslation.draw(g_view, g_proj, cube.transform.position, gizmoScale);
         gizmoRotation.draw(g_view, g_proj, cube.transform.position, gizmoScale);
 
         glfwSwapBuffers(p_window);

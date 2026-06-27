@@ -2,10 +2,10 @@
 #include <glad/glad.h>
 #include <glm/glm.hpp>
 
-class Gizmo {
+class GizmoTranslation {
 public:
-    Gizmo();
-    ~Gizmo();
+    GizmoTranslation();
+    ~GizmoTranslation();
 
     // Rendu par-dessus la scène (depth test désactivé).
     // scale : facteur visuel, mis à jour depuis Viewer chaque frame.

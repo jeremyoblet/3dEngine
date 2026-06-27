@@ -42,10 +42,10 @@ add_executable(MyEngine
     # Display
     src/Objects/Display/Grid.h
     src/Objects/Display/Grid.cpp
-    src/Objects/Display/Gizmo.h
-    src/Objects/Display/Gizmo.cpp
-    src/Objects/Display/GizmoRotation.h
-    src/Objects/Display/GizmoRotation.cpp
+    src/Objects/Display/Gizmo/GizmoTranslation.h
+    src/Objects/Display/Gizmo/GizmoTranslation.cpp
+    src/Objects/Display/Gizmo/GizmoRotation.h
+    src/Objects/Display/Gizmo/GizmoRotation.cpp
 )
 
 target_include_directories(MyEngine PRIVATE src)
