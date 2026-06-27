@@ -1,4 +1,5 @@
 #include <iostream>
+#include <algorithm>
 
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -32,6 +33,29 @@ namespace
     double lastX      = 0.0;
     double lastY      = 0.0;
     int    dragAxis   = -1;
+}
+
+// ---- Helpers ---------------------------------------------------------------
+
+// Retourne la direction du rayon caméra en espace monde pour la position souris (mx, my)
+static glm::vec3 getCameraRay(double mx, double my)
+{
+    float nx = 2.0f * (float)mx / WINDOW_WIDTH  - 1.0f;
+    float ny = 1.0f - 2.0f * (float)my / WINDOW_HEIGHT;
+    glm::mat4 invPV = glm::inverse(g_proj * g_view);
+    glm::vec4 near4 = invPV * glm::vec4(nx, ny, -1.0f, 1.0f);
+    near4 /= near4.w;
+    glm::vec4 far4  = invPV * glm::vec4(nx, ny,  1.0f, 1.0f);
+    far4  /= far4.w;
+    return glm::normalize(glm::vec3(far4) - glm::vec3(near4));
+}
+
+static bool rayHitsSphere(glm::vec3 ro, glm::vec3 rd, glm::vec3 center, float radius)
+{
+    glm::vec3 oc = ro - center;
+    float b = glm::dot(oc, rd);
+    float c = glm::dot(oc, oc) - radius * radius;
+    return (b * b - c) >= 0.0f;
 }
 
 // ---- Helpers gizmo ---------------------------------------------------------
@@ -84,7 +108,21 @@ void mouseButtonCallback(GLFWwindow* w, int btn, int action, int)
             double mx, my;
             glfwGetCursorPos(w, &mx, &my);
             dragAxis = gizmoHitTest(mx, my);
-            leftDown = (dragAxis < 0);
+
+            if (dragAxis >= 0) {
+                // Drag sur un axe du gizmo : pas d'orbit ni de sélection
+                leftDown = false;
+            } else {
+                // Test de sélection sur le cube (sphère englobante)
+                const glm::vec3& s = g_cube->transform.scale;
+                float radius = 0.866f * std::max({ s.x, s.y, s.z });
+                glm::vec3 ro  = camera.getPosition();
+                glm::vec3 rd  = getCameraRay(mx, my);
+                if (rayHitsSphere(ro, rd, g_cube->transform.position, radius))
+                    g_cube->selected = !g_cube->selected;
+                else
+                    leftDown = true; // click dans le vide → orbit
+            }
         } else {
             leftDown = false;
             dragAxis = -1;
@@ -133,6 +171,7 @@ int main()
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    glfwWindowHint(GLFW_STENCIL_BITS, 8);
 
     GLFWwindow* p_window = glfwCreateWindow(
         WINDOW_WIDTH, WINDOW_HEIGHT, "MyEngine", nullptr, nullptr);
@@ -170,7 +209,8 @@ int main()
     {
         glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glStencilMask(0xFF);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
         const float aspect = static_cast<float>(WINDOW_WIDTH) / WINDOW_HEIGHT;
         g_view = camera.getView();
