@@ -37,6 +37,9 @@ namespace
     int    dragAxis         = -1;  // axe de translation actif (-1 = aucun)
     int    rotationDragAxis = -1;  // axe de rotation actif    (-1 = aucun)
     int    scaleDragAxis    = -1;  // axe de scale actif       (-1 = aucun)
+
+    enum class GizmoMode { Translation, Rotation, Scale };
+    GizmoMode activeGizmo = GizmoMode::Translation;
 }
 
 // ---- Helpers ---------------------------------------------------------------
@@ -171,6 +174,14 @@ static int rotationHitTest(double mx, double my)
 
 // ---- Callbacks -------------------------------------------------------------
 
+void keyCallback(GLFWwindow*, int key, int, int action, int)
+{
+    if (action != GLFW_PRESS) return;
+    if (key == GLFW_KEY_W) activeGizmo = GizmoMode::Translation;
+    if (key == GLFW_KEY_E) activeGizmo = GizmoMode::Rotation;
+    if (key == GLFW_KEY_R) activeGizmo = GizmoMode::Scale;
+}
+
 void mouseButtonCallback(GLFWwindow* w, int btn, int action, int)
 {
     if (btn == GLFW_MOUSE_BUTTON_LEFT) {
@@ -178,23 +189,33 @@ void mouseButtonCallback(GLFWwindow* w, int btn, int action, int)
             double mx, my;
             glfwGetCursorPos(w, &mx, &my);
 
-            dragAxis = gizmoHitTest(mx, my);
-            if (dragAxis >= 0) {
-                // Gizmo translation prioritaire
-            } else {
-                rotationDragAxis = rotationHitTest(mx, my);
-                scaleDragAxis    = (rotationDragAxis < 0) ? scaleHitTest(mx, my) : -1;
-                if (rotationDragAxis < 0 && scaleDragAxis < 0) {
-                    // Test sélection (sphère englobante)
-                    const glm::vec3& s = g_cube->transform.scale;
-                    float radius = 0.866f * std::max({ s.x, s.y, s.z });
-                    glm::vec3 ro = camera.getPosition();
-                    glm::vec3 rd = getCameraRay(mx, my);
-                    if (rayHitsSphere(ro, rd, g_cube->transform.position, radius))
-                        g_cube->selected = !g_cube->selected;
-                    else
-                        leftDown = true; // vide → orbit
+            bool gizmoConsumed = false;
+            if (g_cube->selected) {
+                switch (activeGizmo) {
+                    case GizmoMode::Translation:
+                        dragAxis = gizmoHitTest(mx, my);
+                        gizmoConsumed = dragAxis >= 0;
+                        break;
+                    case GizmoMode::Rotation:
+                        rotationDragAxis = rotationHitTest(mx, my);
+                        gizmoConsumed = rotationDragAxis >= 0;
+                        break;
+                    case GizmoMode::Scale:
+                        scaleDragAxis = scaleHitTest(mx, my);
+                        gizmoConsumed = scaleDragAxis >= 0;
+                        break;
                 }
+            }
+            if (!gizmoConsumed) {
+                // Test sélection (sphère englobante)
+                const glm::vec3& s = g_cube->transform.scale;
+                float radius = 0.866f * std::max({ s.x, s.y, s.z });
+                glm::vec3 ro = camera.getPosition();
+                glm::vec3 rd = getCameraRay(mx, my);
+                if (rayHitsSphere(ro, rd, g_cube->transform.position, radius))
+                    g_cube->selected = !g_cube->selected;
+                else
+                    leftDown = true; // vide → orbit
             }
         } else {
             leftDown         = false;
@@ -289,6 +310,7 @@ int main()
 
     std::cout << "OpenGL version: " << glGetString(GL_VERSION) << std::endl;
 
+    glfwSetKeyCallback        (p_window, keyCallback);
     glfwSetMouseButtonCallback(p_window, mouseButtonCallback);
     glfwSetCursorPosCallback  (p_window, cursorCallback);
     glfwSetScrollCallback     (p_window, scrollCallback);
@@ -321,9 +343,19 @@ int main()
 
         grid.draw(gridMVP);
         cube.draw(ctx);
-        gizmoTranslation.draw(g_view, g_proj, cube.transform.position, gizmoVisualScale);
-        gizmoRotation.draw   (g_view, g_proj, cube.transform.position, gizmoVisualScale);
-        gizmoScaleHandle.draw(g_view, g_proj, cube.transform.position, gizmoVisualScale);
+        if (cube.selected) {
+            switch (activeGizmo) {
+                case GizmoMode::Translation:
+                    gizmoTranslation.draw(g_view, g_proj, cube.transform.position, gizmoVisualScale);
+                    break;
+                case GizmoMode::Rotation:
+                    gizmoRotation.draw(g_view, g_proj, cube.transform.position, gizmoVisualScale);
+                    break;
+                case GizmoMode::Scale:
+                    gizmoScaleHandle.draw(g_view, g_proj, cube.transform.position, gizmoVisualScale);
+                    break;
+            }
+        }
 
         glfwSwapBuffers(p_window);
         glfwPollEvents();
