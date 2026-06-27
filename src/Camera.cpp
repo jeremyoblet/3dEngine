@@ -24,8 +24,8 @@ glm::mat4 Camera::getProjection(float aspectRatio) const {
 }
 
 void Camera::orbit(float dx, float dy) {
-    yaw   += dx * 0.4f;
-    pitch  = std::clamp(pitch - dy * 0.4f, -89.0f, 89.0f);
+    yaw   -= dx * 0.4f;
+    pitch  = std::clamp(pitch + dy * 0.4f, -89.0f, 89.0f);
 }
 
 void Camera::pan(float dx, float dy) {

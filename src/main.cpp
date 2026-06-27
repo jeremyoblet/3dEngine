@@ -4,7 +4,7 @@
 #include <GLFW/glfw3.h>
 
 #include "Camera.h"
-#include "Triangle.h"
+#include "Cube.h"
 
 namespace
 {
@@ -86,7 +86,7 @@ int main()
     glfwSetScrollCallback     (p_window, scrollCallback);
 
     // Objets (après GLAD)
-    Triangle triangle;
+    Cube cube;
 
     glEnable(GL_DEPTH_TEST);
 
@@ -103,7 +103,7 @@ int main()
         const glm::mat4 proj  = camera.getProjection(aspect);
         const glm::mat4 MVP   = proj * view * model;
 
-        triangle.draw(MVP);
+        cube.draw(MVP);
 
         glfwSwapBuffers(p_window);
         glfwPollEvents();

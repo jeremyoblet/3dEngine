@@ -15,6 +15,8 @@ add_executable(MyEngine
     src/main.cpp
     src/Triangle.h
     src/Triangle.cpp
+    src/Cube.h
+    src/Cube.cpp
     src/Camera.h
     src/Camera.cpp
 )
