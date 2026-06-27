@@ -12,13 +12,14 @@ find_package(glad CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
 
 add_executable(MyEngine
-    src/main.cpp
-    src/Triangle.h
-    src/Triangle.cpp
-    src/Cube.h
-    src/Cube.cpp
-    src/Camera.h
-    src/Camera.cpp
+    src/Viewer.cpp
+    src/Objects/Cameras/Camera.h
+    src/Objects/Cameras/Camera.cpp
+    src/Objects/Lights/PointLight.h
+    src/Objects/Primitives/Triangle.h
+    src/Objects/Primitives/Triangle.cpp
+    src/Objects/Primitives/Cube.h
+    src/Objects/Primitives/Cube.cpp
 )
 
 target_link_libraries(MyEngine

@@ -3,16 +3,18 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
-#include "Camera.h"
-#include "Cube.h"
+#include "Objects/Cameras/Camera.h"
+#include "Objects/Primitives/Cube.h"
+#include "Objects/Lights/PointLight.h"
 
 namespace
 {
     constexpr int WINDOW_WIDTH  = 1280;
     constexpr int WINDOW_HEIGHT = 720;
 
-    Camera camera;
-    bool   leftDown   = false;
+    Camera     camera;
+    PointLight light;
+    bool       leftDown   = false;
     bool   middleDown = false;
     double lastX      = 0.0;
     double lastY      = 0.0;
@@ -103,7 +105,7 @@ int main()
         const glm::mat4 proj  = camera.getProjection(aspect);
         const glm::mat4 MVP   = proj * view * model;
 
-        cube.draw(MVP);
+        cube.draw(MVP, model, light, camera.getPosition());
 
         glfwSwapBuffers(p_window);
         glfwPollEvents();

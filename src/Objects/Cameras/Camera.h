@@ -15,11 +15,11 @@ public:
     void pan(float dx, float dy);
     void zoom(float delta);
 
+    glm::vec3 getPosition() const;
+
 private:
     glm::vec3 target;
     float distance;
     float yaw;    // rotation horizontale (degrés)
     float pitch;  // rotation verticale   (degrés)
-
-    glm::vec3 getPosition() const;
 };
