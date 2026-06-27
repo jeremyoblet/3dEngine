@@ -20,6 +20,8 @@ add_executable(MyEngine
     src/Objects/Primitives/Triangle.cpp
     src/Objects/Primitives/Cube.h
     src/Objects/Primitives/Cube.cpp
+    src/Objects/Display/Grid.h
+    src/Objects/Display/Grid.cpp
 )
 
 target_link_libraries(MyEngine

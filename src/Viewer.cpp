@@ -4,8 +4,9 @@
 #include <GLFW/glfw3.h>
 
 #include "Objects/Cameras/Camera.h"
-#include "Objects/Primitives/Cube.h"
 #include "Objects/Lights/PointLight.h"
+#include "Objects/Primitives/Cube.h"
+#include "Objects/Display/Grid.h"
 
 namespace
 {
@@ -89,6 +90,7 @@ int main()
 
     // Objets (après GLAD)
     Cube cube;
+    Grid grid;
 
     glEnable(GL_DEPTH_TEST);
 
@@ -105,6 +107,7 @@ int main()
         const glm::mat4 proj  = camera.getProjection(aspect);
         const glm::mat4 MVP   = proj * view * model;
 
+        grid.draw(MVP);
         cube.draw(MVP, model, light, camera.getPosition());
 
         glfwSwapBuffers(p_window);
