@@ -44,6 +44,8 @@ add_executable(MyEngine
     src/Objects/Display/Grid.cpp
     src/Objects/Display/Gizmo.h
     src/Objects/Display/Gizmo.cpp
+    src/Objects/Display/GizmoRotation.h
+    src/Objects/Display/GizmoRotation.cpp
 )
 
 target_include_directories(MyEngine PRIVATE src)

@@ -11,6 +11,7 @@
 #include "Objects/Primitives/Cube.h"
 #include "Objects/Display/Grid.h"
 #include "Objects/Display/Gizmo.h"
+#include "Objects/Display/GizmoRotation.h"
 
 namespace
 {
@@ -32,7 +33,8 @@ namespace
     bool   middleDown = false;
     double lastX      = 0.0;
     double lastY      = 0.0;
-    int    dragAxis   = -1;
+    int    dragAxis         = -1;  // axe de translation actif (-1 = aucun)
+    int    rotationDragAxis = -1;  // axe de rotation actif    (-1 = aucun)
 }
 
 // ---- Helpers ---------------------------------------------------------------
@@ -99,6 +101,47 @@ static int gizmoHitTest(double mx, double my)
     return best;
 }
 
+// Retourne l'axe de l'anneau de rotation le plus proche de la souris (-1 si aucun)
+static int rotationHitTest(double mx, double my)
+{
+    const int   N      = 64;
+    const float TWO_PI = 6.28318530718f;
+
+    struct Ring { glm::vec3 u, v; };
+    constexpr Ring rings[3] = {
+        { {0,1,0}, {0,0,1} }, // anneau X
+        { {1,0,0}, {0,0,1} }, // anneau Y
+        { {1,0,0}, {0,1,0} }, // anneau Z
+    };
+
+    const glm::vec2  mouse  = { (float)mx, (float)my };
+    const glm::vec3& pos    = g_cube->transform.position;
+    constexpr float  THRESH = 10.0f;
+
+    int   best = -1;
+    float minD = THRESH;
+
+    for (int ri = 0; ri < 3; ++ri) {
+        for (int i = 0; i < N; ++i) {
+            float a0 = TWO_PI * i       / N;
+            float a1 = TWO_PI * (i + 1) / N;
+            glm::vec3 p0 = pos + (std::cos(a0) * rings[ri].u + std::sin(a0) * rings[ri].v) * gizmoScale;
+            glm::vec3 p1 = pos + (std::cos(a1) * rings[ri].u + std::sin(a1) * rings[ri].v) * gizmoScale;
+            glm::vec2 s0 = worldToScreen(p0);
+            glm::vec2 s1 = worldToScreen(p1);
+
+            glm::vec2 seg  = s1 - s0;
+            float segLen2  = glm::dot(seg, seg);
+            if (segLen2 < 0.1f) continue;
+
+            float t = glm::clamp(glm::dot(mouse - s0, seg) / segLen2, 0.0f, 1.0f);
+            float d = glm::length(mouse - (s0 + t * seg));
+            if (d < minD) { minD = d; best = ri; }
+        }
+    }
+    return best;
+}
+
 // ---- Callbacks -------------------------------------------------------------
 
 void mouseButtonCallback(GLFWwindow* w, int btn, int action, int)
@@ -107,25 +150,28 @@ void mouseButtonCallback(GLFWwindow* w, int btn, int action, int)
         if (action == GLFW_PRESS) {
             double mx, my;
             glfwGetCursorPos(w, &mx, &my);
-            dragAxis = gizmoHitTest(mx, my);
 
+            dragAxis = gizmoHitTest(mx, my);
             if (dragAxis >= 0) {
-                // Drag sur un axe du gizmo : pas d'orbit ni de sélection
-                leftDown = false;
+                // Gizmo translation prioritaire
             } else {
-                // Test de sélection sur le cube (sphère englobante)
-                const glm::vec3& s = g_cube->transform.scale;
-                float radius = 0.866f * std::max({ s.x, s.y, s.z });
-                glm::vec3 ro  = camera.getPosition();
-                glm::vec3 rd  = getCameraRay(mx, my);
-                if (rayHitsSphere(ro, rd, g_cube->transform.position, radius))
-                    g_cube->selected = !g_cube->selected;
-                else
-                    leftDown = true; // click dans le vide → orbit
+                rotationDragAxis = rotationHitTest(mx, my);
+                if (rotationDragAxis < 0) {
+                    // Test sélection (sphère englobante)
+                    const glm::vec3& s = g_cube->transform.scale;
+                    float radius = 0.866f * std::max({ s.x, s.y, s.z });
+                    glm::vec3 ro = camera.getPosition();
+                    glm::vec3 rd = getCameraRay(mx, my);
+                    if (rayHitsSphere(ro, rd, g_cube->transform.position, radius))
+                        g_cube->selected = !g_cube->selected;
+                    else
+                        leftDown = true; // vide → orbit
+                }
             }
         } else {
-            leftDown = false;
-            dragAxis = -1;
+            leftDown        = false;
+            dragAxis        = -1;
+            rotationDragAxis = -1;
         }
     }
     if (btn == GLFW_MOUSE_BUTTON_MIDDLE)
@@ -137,13 +183,26 @@ void cursorCallback(GLFWwindow*, double x, double y)
     const float dx = static_cast<float>(x - lastX);
     const float dy = static_cast<float>(y - lastY);
 
+    static constexpr glm::vec3 axisDirs[3] = { {1,0,0}, {0,1,0}, {0,0,1} };
+
     if (dragAxis >= 0) {
+        // Translation contrainte sur un axe
         glm::vec2 sa  = screenAxisDir(dragAxis);
         float     len = glm::length(sa);
         if (len > 1.0f) {
-            static constexpr glm::vec3 dirs[3] = { {1,0,0}, {0,1,0}, {0,0,1} };
             float worldDelta = (dx * sa.x + dy * sa.y) / (len * len);
-            g_cube->transform.position += dirs[dragAxis] * worldDelta;
+            g_cube->transform.position += axisDirs[dragAxis] * worldDelta;
+        }
+    } else if (rotationDragAxis >= 0) {
+        // Rotation autour d'un axe
+        // La perpendiculaire écran à l'axe de rotation donne la direction de drag
+        const glm::vec3& pos = g_cube->transform.position;
+        glm::vec2 sa  = worldToScreen(pos + axisDirs[rotationDragAxis]) - worldToScreen(pos);
+        float     len = glm::length(sa);
+        if (len > 1.0f) {
+            glm::vec2 perp = glm::vec2(-sa.y, sa.x) / len; // perpendiculaire en espace écran
+            float degrees  = (dx * perp.x + dy * perp.y) * 0.5f;
+            g_cube->transform.rotation[rotationDragAxis] += degrees;
         }
     } else {
         if (leftDown)   camera.orbit(dx, dy);
@@ -198,9 +257,10 @@ int main()
     glfwSetScrollCallback     (p_window, scrollCallback);
 
     // Objets (après GLAD)
-    Cube  cube;
-    Grid  grid;
-    Gizmo gizmo;
+    Cube          cube;
+    Grid          grid;
+    Gizmo         gizmo;
+    GizmoRotation gizmoRotation;
     g_cube = &cube;
 
     glEnable(GL_DEPTH_TEST);
@@ -223,7 +283,8 @@ int main()
 
         grid.draw(gridMVP);
         cube.draw(ctx);
-        gizmo.draw(g_view, g_proj, cube.transform.position, gizmoScale);
+        gizmo.draw        (g_view, g_proj, cube.transform.position, gizmoScale);
+        gizmoRotation.draw(g_view, g_proj, cube.transform.position, gizmoScale);
 
         glfwSwapBuffers(p_window);
         glfwPollEvents();
