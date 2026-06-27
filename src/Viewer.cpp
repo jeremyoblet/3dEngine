@@ -4,6 +4,7 @@
 #include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include "Core/Transform.h"
 #include "Objects/Cameras/Camera.h"
 #include "Objects/Lights/PointLight.h"
 #include "Objects/Primitives/Cube.h"
@@ -18,8 +19,8 @@ namespace
     Camera     camera;
     PointLight light;
 
-    // Position du cube dans la scène
-    glm::vec3  cubePos       = { 0.0f, 0.0f, 0.0f };
+    // Transform du cube
+    Transform  cubeTransform;
 
     // Matrices courantes (mises à jour chaque frame, lues par les callbacks)
     glm::mat4  g_view(1.0f);
@@ -49,7 +50,7 @@ static glm::vec2 worldToScreen(glm::vec3 p)
 static glm::vec2 screenAxisDir(int axis)
 {
     static constexpr glm::vec3 dirs[3] = { {1,0,0}, {0,1,0}, {0,0,1} };
-    return worldToScreen(cubePos + dirs[axis]) - worldToScreen(cubePos);
+    return worldToScreen(cubeTransform.position + dirs[axis]) - worldToScreen(cubeTransform.position);
 }
 
 // Retourne l'axe du gizmo le plus proche de la souris (-1 si aucun)
@@ -57,14 +58,14 @@ static int gizmoHitTest(double mx, double my)
 {
     static constexpr glm::vec3 dirs[3] = { {1,0,0}, {0,1,0}, {0,0,1} };
     const glm::vec2 mouse  = { (float)mx, (float)my };
-    const glm::vec2 origin = worldToScreen(cubePos);
+    const glm::vec2 origin = worldToScreen(cubeTransform.position);
     constexpr float THRESH = 12.0f; // pixels
 
     int   best = -1;
     float minD = THRESH;
 
     for (int i = 0; i < 3; ++i) {
-        glm::vec2 tip = worldToScreen(cubePos + dirs[i] * gizmoScale);
+        glm::vec2 tip = worldToScreen(cubeTransform.position + dirs[i] * gizmoScale);
         glm::vec2 seg = tip - origin;
         float segLen2 = glm::dot(seg, seg);
         if (segLen2 < 1.0f) continue;
@@ -108,7 +109,7 @@ void cursorCallback(GLFWwindow*, double x, double y)
             static constexpr glm::vec3 dirs[3] = { {1,0,0}, {0,1,0}, {0,0,1} };
             float proj      = (dx * sa.x + dy * sa.y) / len; // pixels projetés
             float worldDelta = proj / len;                     // 1 unité = len pixels
-            cubePos += dirs[dragAxis] * worldDelta;
+            cubeTransform.position += dirs[dragAxis] * worldDelta;
         }
     } else {
         if (leftDown)   camera.orbit(dx, dy);
@@ -179,14 +180,14 @@ int main()
         g_proj = camera.getProjection(aspect);
 
         // Le gizmo garde une taille visuelle constante quelle que soit la distance
-        gizmoScale = glm::length(camera.getPosition() - cubePos) * 0.18f;
+        gizmoScale = glm::length(camera.getPosition() - cubeTransform.position) * 0.18f;
 
-        const glm::mat4 model = glm::translate(glm::mat4(1.0f), cubePos);
+        const glm::mat4 model = cubeTransform.getMatrix();
         const glm::mat4 MVP   = g_proj * g_view * model;
 
         grid.draw(MVP);
         cube.draw(MVP, model, light, camera.getPosition());
-        gizmo.draw(g_view, g_proj, cubePos, gizmoScale);
+        gizmo.draw(g_view, g_proj, cubeTransform.position, gizmoScale);
 
         glfwSwapBuffers(p_window);
         glfwPollEvents();

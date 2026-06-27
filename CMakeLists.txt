@@ -13,6 +13,8 @@ find_package(glm CONFIG REQUIRED)
 
 add_executable(MyEngine
     src/Viewer.cpp
+    src/Core/Transform.h
+    src/Core/Transform.cpp
     src/Objects/Cameras/Camera.h
     src/Objects/Cameras/Camera.cpp
     src/Objects/Lights/PointLight.h
