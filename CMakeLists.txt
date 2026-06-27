@@ -22,6 +22,8 @@ add_executable(MyEngine
     src/Objects/Primitives/Cube.cpp
     src/Objects/Display/Grid.h
     src/Objects/Display/Grid.cpp
+    src/Objects/Display/Gizmo.h
+    src/Objects/Display/Gizmo.cpp
 )
 
 target_link_libraries(MyEngine
