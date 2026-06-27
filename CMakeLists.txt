@@ -46,6 +46,8 @@ add_executable(MyEngine
     src/Objects/Display/Gizmo/GizmoTranslation.cpp
     src/Objects/Display/Gizmo/GizmoRotation.h
     src/Objects/Display/Gizmo/GizmoRotation.cpp
+    src/Objects/Display/Gizmo/GizmoScale.h
+    src/Objects/Display/Gizmo/GizmoScale.cpp
 )
 
 target_include_directories(MyEngine PRIVATE src)

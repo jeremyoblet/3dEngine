@@ -12,6 +12,7 @@
 #include "Objects/Display/Grid.h"
 #include "Objects/Display/Gizmo/GizmoTranslation.h"
 #include "Objects/Display/Gizmo/GizmoRotation.h"
+#include "Objects/Display/Gizmo/GizmoScale.h"
 
 namespace
 {
@@ -22,7 +23,7 @@ namespace
     PointLight light;
 
     Cube*  g_cube  = nullptr;   // initialisé après GLAD
-    float  gizmoScale = 1.0f;
+    float  gizmoVisualScale = 1.0f;
 
     // Matrices courantes (lues par les callbacks)
     glm::mat4 g_view(1.0f);
@@ -35,6 +36,7 @@ namespace
     double lastY      = 0.0;
     int    dragAxis         = -1;  // axe de translation actif (-1 = aucun)
     int    rotationDragAxis = -1;  // axe de rotation actif    (-1 = aucun)
+    int    scaleDragAxis    = -1;  // axe de scale actif       (-1 = aucun)
 }
 
 // ---- Helpers ---------------------------------------------------------------
@@ -89,7 +91,32 @@ static int gizmoHitTest(double mx, double my)
     float minD = THRESH;
 
     for (int i = 0; i < 3; ++i) {
-        glm::vec2 tip = worldToScreen(pos + dirs[i] * gizmoScale);
+        glm::vec2 tip = worldToScreen(pos + dirs[i] * gizmoVisualScale);
+        glm::vec2 seg = tip - origin;
+        float segLen2 = glm::dot(seg, seg);
+        if (segLen2 < 1.0f) continue;
+
+        float t = glm::clamp(glm::dot(mouse - origin, seg) / segLen2, 0.0f, 1.0f);
+        float d = glm::length(mouse - (origin + t * seg));
+        if (d < minD) { minD = d; best = i; }
+    }
+    return best;
+}
+
+// Retourne l'axe du gizmo de scale le plus proche de la souris (-1 si aucun)
+static int scaleHitTest(double mx, double my)
+{
+    static constexpr glm::vec3 dirs[3] = { {1,0,0}, {0,1,0}, {0,0,1} };
+    const glm::vec2  mouse  = { (float)mx, (float)my };
+    const glm::vec3& pos    = g_cube->transform.position;
+    const glm::vec2  origin = worldToScreen(pos);
+    constexpr float  THRESH = 12.0f;
+
+    int   best = -1;
+    float minD = THRESH;
+
+    for (int i = 0; i < 3; ++i) {
+        glm::vec2 tip = worldToScreen(pos + dirs[i] * gizmoVisualScale);
         glm::vec2 seg = tip - origin;
         float segLen2 = glm::dot(seg, seg);
         if (segLen2 < 1.0f) continue;
@@ -125,8 +152,8 @@ static int rotationHitTest(double mx, double my)
         for (int i = 0; i < N; ++i) {
             float a0 = TWO_PI * i       / N;
             float a1 = TWO_PI * (i + 1) / N;
-            glm::vec3 p0 = pos + (std::cos(a0) * rings[ri].u + std::sin(a0) * rings[ri].v) * gizmoScale;
-            glm::vec3 p1 = pos + (std::cos(a1) * rings[ri].u + std::sin(a1) * rings[ri].v) * gizmoScale;
+            glm::vec3 p0 = pos + (std::cos(a0) * rings[ri].u + std::sin(a0) * rings[ri].v) * gizmoVisualScale;
+            glm::vec3 p1 = pos + (std::cos(a1) * rings[ri].u + std::sin(a1) * rings[ri].v) * gizmoVisualScale;
             glm::vec2 s0 = worldToScreen(p0);
             glm::vec2 s1 = worldToScreen(p1);
 
@@ -156,7 +183,8 @@ void mouseButtonCallback(GLFWwindow* w, int btn, int action, int)
                 // Gizmo translation prioritaire
             } else {
                 rotationDragAxis = rotationHitTest(mx, my);
-                if (rotationDragAxis < 0) {
+                scaleDragAxis    = (rotationDragAxis < 0) ? scaleHitTest(mx, my) : -1;
+                if (rotationDragAxis < 0 && scaleDragAxis < 0) {
                     // Test sélection (sphère englobante)
                     const glm::vec3& s = g_cube->transform.scale;
                     float radius = 0.866f * std::max({ s.x, s.y, s.z });
@@ -169,9 +197,10 @@ void mouseButtonCallback(GLFWwindow* w, int btn, int action, int)
                 }
             }
         } else {
-            leftDown        = false;
-            dragAxis        = -1;
+            leftDown         = false;
+            dragAxis         = -1;
             rotationDragAxis = -1;
+            scaleDragAxis    = -1;
         }
     }
     if (btn == GLFW_MOUSE_BUTTON_MIDDLE)
@@ -195,14 +224,22 @@ void cursorCallback(GLFWwindow*, double x, double y)
         }
     } else if (rotationDragAxis >= 0) {
         // Rotation autour d'un axe
-        // La perpendiculaire écran à l'axe de rotation donne la direction de drag
         const glm::vec3& pos = g_cube->transform.position;
         glm::vec2 sa  = worldToScreen(pos + axisDirs[rotationDragAxis]) - worldToScreen(pos);
         float     len = glm::length(sa);
         if (len > 1.0f) {
-            glm::vec2 perp = glm::vec2(-sa.y, sa.x) / len; // perpendiculaire en espace écran
+            glm::vec2 perp = glm::vec2(-sa.y, sa.x) / len;
             float degrees  = (dx * perp.x + dy * perp.y) * 0.5f;
             g_cube->transform.rotation[rotationDragAxis] += degrees;
+        }
+    } else if (scaleDragAxis >= 0) {
+        // Scale le long d'un axe
+        glm::vec2 sa  = screenAxisDir(scaleDragAxis);
+        float     len = glm::length(sa);
+        if (len > 1.0f) {
+            float delta = (dx * sa.x + dy * sa.y) / (len * len);
+            float& s    = g_cube->transform.scale[scaleDragAxis];
+            s = std::max(0.01f, s + delta * 1.5f);
         }
     } else {
         if (leftDown)   camera.orbit(dx, dy);
@@ -261,6 +298,7 @@ int main()
     Grid             grid;
     GizmoTranslation gizmoTranslation;
     GizmoRotation    gizmoRotation;
+    GizmoScale       gizmoScaleHandle;
     g_cube = &cube;
 
     glEnable(GL_DEPTH_TEST);
@@ -276,15 +314,16 @@ int main()
         g_view = camera.getView();
         g_proj = camera.getProjection(aspect);
 
-        gizmoScale = glm::length(camera.getPosition() - cube.transform.position) * 0.18f;
+        gizmoVisualScale = glm::length(camera.getPosition() - cube.transform.position) * 0.18f;
 
         const DrawContext ctx { g_view, g_proj, camera.getPosition(), light };
         const glm::mat4   gridMVP = g_proj * g_view * glm::mat4(1.0f);
 
         grid.draw(gridMVP);
         cube.draw(ctx);
-        gizmoTranslation.draw(g_view, g_proj, cube.transform.position, gizmoScale);
-        gizmoRotation.draw(g_view, g_proj, cube.transform.position, gizmoScale);
+        gizmoTranslation.draw(g_view, g_proj, cube.transform.position, gizmoVisualScale);
+        gizmoRotation.draw   (g_view, g_proj, cube.transform.position, gizmoVisualScale);
+        gizmoScaleHandle.draw(g_view, g_proj, cube.transform.position, gizmoVisualScale);
 
         glfwSwapBuffers(p_window);
         glfwPollEvents();
