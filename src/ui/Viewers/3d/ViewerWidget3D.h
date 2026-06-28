@@ -2,7 +2,9 @@
 #include <glad/glad.h>  // doit précéder tout header Qt/OpenGL
 #include <memory>
 #include <functional>
+#include <vector>
 #include <QOpenGLWidget>
+#include <QPoint>
 #include <glm/glm.hpp>
 #include "Core/Scene.h"
 #include "Objects/Cameras/Camera.h"
@@ -13,6 +15,7 @@ class GizmoTranslation;
 class GizmoRotation;
 class GizmoScale;
 class QTimer;
+class QRect;
 
 class ViewerWidget3D : public QOpenGLWidget {
     Q_OBJECT
@@ -27,7 +30,7 @@ public:
 
 signals:
     void sceneChanged();
-    void selectionChanged(SceneNode* node);
+    void selectionChanged(SceneNode* node); // nœud primaire (premier de la sélection)
 
 protected:
     void initializeGL() override;
@@ -41,8 +44,9 @@ protected:
     void wheelEvent(QWheelEvent* event) override;
 
 private:
-    Scene&     m_scene;
-    SceneNode* m_selectedNode = nullptr;
+    Scene&                  m_scene;
+    std::vector<SceneNode*> m_selection;      // sélection courante (peut être multiple)
+    SceneNode*              m_selectedNode = nullptr; // nœud primaire (gizmo + outliner)
 
     Camera     m_camera;
     PointLight m_light;
@@ -64,13 +68,18 @@ private:
     int    m_rotationDragAxis = -1;
     int    m_scaleDragAxis    = -1;
 
+    bool   m_marqueeActive = false;
+    QPoint m_marqueeStart;
+
     enum class GizmoMode { Translation, Rotation, Scale };
     GizmoMode m_activeGizmo = GizmoMode::Translation;
 
     QTimer* m_timer = nullptr;
 
-    void       setSelectedNode(SceneNode* node); // modifie la sélection et émet selectionChanged
+    void setSelection(std::vector<SceneNode*> nodes); // remplace la sélection et émet selectionChanged
+    void setSelectedNode(SceneNode* node);             // sélection simple
 
+    void       applyMarqueeSelection(const QRect& rect);
     SceneNode* pickNode(double mx, double my) const;
     void       traverseNodes(const std::vector<std::unique_ptr<SceneNode>>& nodes,
                              const std::function<void(SceneNode&)>& fn) const;

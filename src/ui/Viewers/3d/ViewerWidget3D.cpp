@@ -7,6 +7,8 @@
 #include <QMouseEvent>
 #include <QWheelEvent>
 #include <QOpenGLContext>
+#include <QPainter>
+#include <QRect>
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "Core/DrawContext.h"
@@ -75,6 +77,15 @@ void ViewerWidget3D::paintGL()
     m_grid->draw(m_proj * m_view * glm::mat4(1.0f));
     m_scene.draw(ctx);
 
+    // Overlay 2D : rectangle de sélection marquee
+    if (m_marqueeActive) {
+        QRect marqueeRect = QRect(m_marqueeStart, QPoint((int)m_lastX, (int)m_lastY)).normalized();
+        QPainter painter(this);
+        painter.setPen(QPen(QColor(100, 170, 255, 200), 1));
+        painter.setBrush(QColor(100, 170, 255, 30));
+        painter.drawRect(marqueeRect);
+    }
+
     if (m_selectedNode && m_selectedNode->object) {
         const glm::vec3& pos = m_selectedNode->object->transform.position;
         m_gizmoVisualScale = glm::length(m_camera.getPosition() - pos) * 0.18f;
@@ -95,25 +106,71 @@ void ViewerWidget3D::paintGL()
 
 // ---- Selection -------------------------------------------------------------
 
+void ViewerWidget3D::setSelection(std::vector<SceneNode*> nodes)
+{
+    for (auto* n : m_selection)
+        if (n && n->object) n->object->selected = false;
+
+    m_selection    = std::move(nodes);
+    m_selectedNode = m_selection.empty() ? nullptr : m_selection.front();
+
+    for (auto* n : m_selection)
+        if (n && n->object) n->object->selected = true;
+
+    emit selectionChanged(m_selectedNode);
+}
+
 void ViewerWidget3D::setSelectedNode(SceneNode* node)
 {
-    if (m_selectedNode && m_selectedNode->object)
-        m_selectedNode->object->selected = false;
-    m_selectedNode = node;
-    if (m_selectedNode && m_selectedNode->object)
-        m_selectedNode->object->selected = true;
-    emit selectionChanged(m_selectedNode);
+    setSelection(node ? std::vector<SceneNode*>{ node } : std::vector<SceneNode*>{});
 }
 
 void ViewerWidget3D::selectNode(SceneNode* node)
 {
     // Appelé depuis l'Outliner — on ne ré-émet pas selectionChanged pour éviter le cycle
-    if (m_selectedNode && m_selectedNode->object)
-        m_selectedNode->object->selected = false;
+    for (auto* n : m_selection)
+        if (n && n->object) n->object->selected = false;
+
+    m_selection    = node ? std::vector<SceneNode*>{ node } : std::vector<SceneNode*>{};
     m_selectedNode = node;
-    if (m_selectedNode && m_selectedNode->object)
-        m_selectedNode->object->selected = true;
+
+    for (auto* n : m_selection)
+        if (n && n->object) n->object->selected = true;
+
     update();
+}
+
+void ViewerWidget3D::applyMarqueeSelection(const QRect& rect)
+{
+    std::vector<SceneNode*> selected;
+    traverseNodes(m_scene.roots(), [&](SceneNode& node) {
+        if (!node.object) return;
+
+        const glm::vec3& pos = node.object->transform.position;
+
+        // Rejeter les objets derrière la caméra
+        glm::vec4 clip = m_proj * m_view * glm::vec4(pos, 1.0f);
+        if (clip.w <= 0.0f) return;
+
+        const glm::vec3& s    = node.object->transform.scale;
+        float worldRadius     = 0.866f * std::max({ s.x, s.y, s.z });
+        glm::vec2 cs          = worldToScreen(pos);
+
+        // Rayon en pixels : max des 3 projections axis-aligned
+        float screenRadius = 0.0f;
+        for (const auto& axis : { glm::vec3(worldRadius,0,0), glm::vec3(0,worldRadius,0), glm::vec3(0,0,worldRadius) })
+            screenRadius = std::max(screenRadius, glm::length(worldToScreen(pos + axis) - cs));
+
+        if (cs.x - screenRadius >= rect.left()   &&
+            cs.x + screenRadius <= rect.right()  &&
+            cs.y - screenRadius >= rect.top()    &&
+            cs.y + screenRadius <= rect.bottom())
+        {
+            selected.push_back(&node);
+        }
+    });
+
+    setSelection(std::move(selected));
 }
 
 // ---- Public slot -----------------------------------------------------------
@@ -314,7 +371,12 @@ void ViewerWidget3D::mousePressEvent(QMouseEvent* event)
             }
             if (!gizmoConsumed) {
                 SceneNode* hit = pickNode(mx, my);
-                setSelectedNode(hit);
+                if (hit) {
+                    setSelectedNode(hit);
+                } else {
+                    m_marqueeActive = true;
+                    m_marqueeStart  = QPoint((int)mx, (int)my);
+                }
             }
         }
     }
@@ -329,6 +391,15 @@ void ViewerWidget3D::mousePressEvent(QMouseEvent* event)
 void ViewerWidget3D::mouseReleaseEvent(QMouseEvent* event)
 {
     if (event->button() == Qt::LeftButton) {
+        if (m_marqueeActive) {
+            QRect rect = QRect(m_marqueeStart, QPoint((int)event->position().x(),
+                                                      (int)event->position().y())).normalized();
+            if (rect.width() > 4 || rect.height() > 4)
+                applyMarqueeSelection(rect);
+            else
+                setSelectedNode(nullptr); // clic dans le vide → désélectionner
+            m_marqueeActive = false;
+        }
         m_leftDown         = false;
         m_dragAxis         = -1;
         m_rotationDragAxis = -1;
@@ -352,28 +423,36 @@ void ViewerWidget3D::mouseMoveEvent(QMouseEvent* event)
         float     len = glm::length(sa);
         if (len > 1.0f) {
             float delta = (dx * sa.x + dy * sa.y) / (len * len);
-            m_selectedNode->object->transform.position += axisDirs[m_dragAxis] * delta;
+            for (auto* n : m_selection)
+                if (n && n->object)
+                    n->object->transform.position += axisDirs[m_dragAxis] * delta;
         }
     } else if (m_selectedNode && m_rotationDragAxis >= 0) {
         const glm::vec3& pos = m_selectedNode->object->transform.position;
         glm::vec2 sa  = worldToScreen(pos + axisDirs[m_rotationDragAxis]) - worldToScreen(pos);
         float     len = glm::length(sa);
         if (len > 1.0f) {
-            glm::vec2 perp = glm::vec2(-sa.y, sa.x) / len;
-            m_selectedNode->object->transform.rotation[m_rotationDragAxis] +=
-                (dx * perp.x + dy * perp.y) * 0.5f;
+            glm::vec2 perp  = glm::vec2(-sa.y, sa.x) / len;
+            float     delta = (dx * perp.x + dy * perp.y) * 0.5f;
+            for (auto* n : m_selection)
+                if (n && n->object)
+                    n->object->transform.rotation[m_rotationDragAxis] += delta;
         }
     } else if (m_selectedNode && m_scaleDragAxis >= 0) {
         glm::vec2 sa  = screenAxisDir(m_scaleDragAxis);
         float     len = glm::length(sa);
         if (len > 1.0f) {
-            float  delta = (dx * sa.x + dy * sa.y) / (len * len);
-            float& s     = m_selectedNode->object->transform.scale[m_scaleDragAxis];
-            s = std::max(0.01f, s + delta * 1.5f);
+            float delta = (dx * sa.x + dy * sa.y) / (len * len);
+            for (auto* n : m_selection)
+                if (n && n->object) {
+                    float& s = n->object->transform.scale[m_scaleDragAxis];
+                    s = std::max(0.01f, s + delta * 1.5f);
+                }
         }
     } else {
-        if (m_leftDown)   m_camera.orbit(dx, dy);
-        if (m_middleDown) m_camera.pan(dx, dy);
+        if (m_leftDown)     m_camera.orbit(dx, dy);
+        if (m_middleDown)   m_camera.pan(dx, dy);
+        if (m_marqueeActive) update(); // redessine le rectangle
     }
 
     m_lastX = x;
