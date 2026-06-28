@@ -287,36 +287,40 @@ void ViewerWidget3D::keyPressEvent(QKeyEvent* event)
 
 void ViewerWidget3D::mousePressEvent(QMouseEvent* event)
 {
-    const double mx = event->position().x();
-    const double my = event->position().y();
+    const double mx      = event->position().x();
+    const double my      = event->position().y();
+    const bool   altHeld = event->modifiers() & Qt::AltModifier;
 
     if (event->button() == Qt::LeftButton) {
-        bool gizmoConsumed = false;
-        if (m_selectedNode) {
-            switch (m_activeGizmo) {
-                case GizmoMode::Translation:
-                    m_dragAxis = gizmoHitTest(mx, my);
-                    gizmoConsumed = m_dragAxis >= 0;
-                    break;
-                case GizmoMode::Rotation:
-                    m_rotationDragAxis = rotationHitTest(mx, my);
-                    gizmoConsumed = m_rotationDragAxis >= 0;
-                    break;
-                case GizmoMode::Scale:
-                    m_scaleDragAxis = scaleHitTest(mx, my);
-                    gizmoConsumed = m_scaleDragAxis >= 0;
-                    break;
+        if (altHeld) {
+            m_leftDown = true; // Alt + gauche → orbite
+        } else {
+            bool gizmoConsumed = false;
+            if (m_selectedNode) {
+                switch (m_activeGizmo) {
+                    case GizmoMode::Translation:
+                        m_dragAxis = gizmoHitTest(mx, my);
+                        gizmoConsumed = m_dragAxis >= 0;
+                        break;
+                    case GizmoMode::Rotation:
+                        m_rotationDragAxis = rotationHitTest(mx, my);
+                        gizmoConsumed = m_rotationDragAxis >= 0;
+                        break;
+                    case GizmoMode::Scale:
+                        m_scaleDragAxis = scaleHitTest(mx, my);
+                        gizmoConsumed = m_scaleDragAxis >= 0;
+                        break;
+                }
             }
-        }
-        if (!gizmoConsumed) {
-            SceneNode* hit = pickNode(mx, my);
-            setSelectedNode(hit);
-            if (!hit) m_leftDown = true;
+            if (!gizmoConsumed) {
+                SceneNode* hit = pickNode(mx, my);
+                setSelectedNode(hit);
+            }
         }
     }
 
-    if (event->button() == Qt::MiddleButton)
-        m_middleDown = true;
+    if (event->button() == Qt::MiddleButton && altHeld)
+        m_middleDown = true; // Alt + milieu → pan
 
     m_lastX = mx;
     m_lastY = my;
