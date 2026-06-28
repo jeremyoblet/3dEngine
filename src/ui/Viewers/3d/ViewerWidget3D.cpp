@@ -8,6 +8,7 @@
 #include <QWheelEvent>
 #include <QOpenGLContext>
 #include <QPainter>
+#include <QPaintEvent>
 #include <QRect>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -76,15 +77,6 @@ void ViewerWidget3D::paintGL()
     const DrawContext ctx { m_view, m_proj, m_camera.getPosition(), lights };
     m_grid->draw(m_proj * m_view * glm::mat4(1.0f));
     m_scene.draw(ctx);
-
-    // Overlay 2D : rectangle de sélection marquee
-    if (m_marqueeActive) {
-        QRect marqueeRect = QRect(m_marqueeStart, QPoint((int)m_lastX, (int)m_lastY)).normalized();
-        QPainter painter(this);
-        painter.setPen(QPen(QColor(100, 170, 255, 200), 1));
-        painter.setBrush(QColor(100, 170, 255, 30));
-        painter.drawRect(marqueeRect);
-    }
 
     if (m_selectedNode && m_selectedNode->object) {
         const glm::vec3& pos = m_selectedNode->object->transform.position;
@@ -319,6 +311,19 @@ int ViewerWidget3D::rotationHitTest(double mx, double my) const
 }
 
 // ---- Events ----------------------------------------------------------------
+
+void ViewerWidget3D::paintEvent(QPaintEvent* event)
+{
+    QOpenGLWidget::paintEvent(event); // composite le rendu OpenGL
+
+    if (m_marqueeActive) {
+        QRect rect = QRect(m_marqueeStart, QPoint((int)m_lastX, (int)m_lastY)).normalized();
+        QPainter painter(this);
+        painter.setPen(QPen(QColor(100, 170, 255, 200), 1));
+        painter.setBrush(QColor(100, 170, 255, 30));
+        painter.drawRect(rect);
+    }
+}
 
 void ViewerWidget3D::keyPressEvent(QKeyEvent* event)
 {
