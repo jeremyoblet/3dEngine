@@ -69,3 +69,8 @@ void Material::set(const std::string& name, float v) const
 {
     glUniform1f(location(name), v);
 }
+
+void Material::set(const std::string& name, int v) const
+{
+    glUniform1i(location(name), v);
+}

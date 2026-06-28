@@ -82,13 +82,17 @@ void Object::draw(const DrawContext& ctx)
 
     // Dessin normal (toujours exécuté)
     material->use();
-    material->set("uMVP",           MVP);
-    material->set("uModel",         model);
-    material->set("uNormalMatrix",  normalMatrix);
-    material->set("uViewPos",       ctx.viewPos);
-    material->set("uLightPos",      ctx.light.position);
-    material->set("uLightColor",    ctx.light.color);
-    material->set("uLightIntensity", ctx.light.intensity);
+    material->set("uMVP",          MVP);
+    material->set("uModel",        model);
+    material->set("uNormalMatrix", normalMatrix);
+    material->set("uViewPos",      ctx.viewPos);
+    material->set("uNumLights",    (int)ctx.lights.size());
+    for (int i = 0; i < (int)ctx.lights.size(); ++i) {
+        const std::string si = "[" + std::to_string(i) + "]";
+        material->set("uLightPos"       + si, ctx.lights[i].position);
+        material->set("uLightColor"     + si, ctx.lights[i].color);
+        material->set("uLightIntensity" + si, ctx.lights[i].intensity);
+    }
     shape->draw();
 
     if (selected)

@@ -32,26 +32,31 @@ static const char* FRAG_SRC = R"(
     in vec3 vNormal;
     in vec3 vColor;
 
-    uniform vec3  uLightPos;
-    uniform vec3  uLightColor;
-    uniform float uLightIntensity;
+    #define MAX_LIGHTS 4
+    uniform int   uNumLights;
+    uniform vec3  uLightPos[MAX_LIGHTS];
+    uniform vec3  uLightColor[MAX_LIGHTS];
+    uniform float uLightIntensity[MAX_LIGHTS];
     uniform vec3  uViewPos;
 
     out vec4 FragColor;
 
     void main() {
-        vec3 ambient  = 0.12 * vColor;
-        vec3 norm     = normalize(vNormal);
-        vec3 lightDir = normalize(uLightPos - vWorldPos);
-        float diff    = max(dot(norm, lightDir), 0.0);
-        float d           = length(uLightPos - vWorldPos);
-        float attenuation = uLightIntensity / (1.0 + 0.35 * d + 0.44 * d * d);
-        vec3 diffuse  = diff * uLightColor * vColor * attenuation;
-        vec3 viewDir  = normalize(uViewPos - vWorldPos);
-        vec3 halfDir  = normalize(lightDir + viewDir);
-        float spec    = pow(max(dot(norm, halfDir), 0.0), 64.0);
-        vec3 specular = 0.4 * spec * uLightColor * attenuation;
-        FragColor = vec4(ambient + diffuse + specular, 1.0);
+        vec3 norm    = normalize(vNormal);
+        vec3 viewDir = normalize(uViewPos - vWorldPos);
+        vec3 result  = 0.12 * vColor; // ambient
+        for (int i = 0; i < uNumLights; i++) {
+            vec3  lightDir    = normalize(uLightPos[i] - vWorldPos);
+            float diff        = max(dot(norm, lightDir), 0.0);
+            float d           = length(uLightPos[i] - vWorldPos);
+            float attenuation = uLightIntensity[i] / (1.0 + 0.35 * d + 0.44 * d * d);
+            vec3  diffuse     = diff * uLightColor[i] * vColor * attenuation;
+            vec3  halfDir     = normalize(lightDir + viewDir);
+            float spec        = pow(max(dot(norm, halfDir), 0.0), 64.0);
+            vec3  specular    = 0.4 * spec * uLightColor[i] * attenuation;
+            result += diffuse + specular;
+        }
+        FragColor = vec4(result, 1.0);
     }
 )";
 

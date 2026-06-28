@@ -10,6 +10,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "Core/DrawContext.h"
+#include "Objects/Lights/PointLightObject.h"
 #include "Objects/Primitives/Cube.h"
 #include "Objects/Display/Grid.h"
 #include "Objects/Display/Gizmo/GizmoTranslation.h"
@@ -62,7 +63,15 @@ void ViewerWidget3D::paintGL()
     m_view = m_camera.getView();
     m_proj = m_camera.getProjection(aspect);
 
-    const DrawContext ctx { m_view, m_proj, m_camera.getPosition(), m_light };
+    std::vector<PointLight> lights;
+    traverseNodes(m_scene.roots(), [&](SceneNode& node) {
+        if (auto* pl = dynamic_cast<PointLightObject*>(node.object.get()))
+            lights.push_back({ node.object->transform.position, pl->lightColor, pl->intensity });
+    });
+    if (lights.empty())
+        lights.push_back(m_light);
+
+    const DrawContext ctx { m_view, m_proj, m_camera.getPosition(), lights };
     m_grid->draw(m_proj * m_view * glm::mat4(1.0f));
     m_scene.draw(ctx);
 

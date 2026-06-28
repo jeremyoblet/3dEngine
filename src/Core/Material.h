@@ -15,6 +15,7 @@ public:
     void set(const std::string& name, const glm::mat3&) const;
     void set(const std::string& name, const glm::vec3&) const;
     void set(const std::string& name, float)            const;
+    void set(const std::string& name, int)              const;
 
 private:
     unsigned int program;
