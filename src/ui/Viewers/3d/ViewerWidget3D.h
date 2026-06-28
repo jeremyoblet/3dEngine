@@ -23,9 +23,11 @@ public:
 
     void addToScene(const std::string& name,
                     std::function<std::unique_ptr<Object>()> factory);
+    void selectNode(SceneNode* node);
 
 signals:
     void sceneChanged();
+    void selectionChanged(SceneNode* node);
 
 protected:
     void initializeGL() override;
@@ -66,6 +68,8 @@ private:
     GizmoMode m_activeGizmo = GizmoMode::Translation;
 
     QTimer* m_timer = nullptr;
+
+    void       setSelectedNode(SceneNode* node); // modifie la sélection et émet selectionChanged
 
     SceneNode* pickNode(double mx, double my) const;
     void       traverseNodes(const std::vector<std::unique_ptr<SceneNode>>& nodes,

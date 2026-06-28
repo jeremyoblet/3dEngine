@@ -46,8 +46,12 @@ int main(int argc, char* argv[])
         { "Triangle", [viewer] { viewer->addToScene("Triangle", [] { return std::make_unique<Triangle>(); }); }},
     });
 
-    QObject::connect(viewer, &ViewerWidget3D::sceneChanged,
+    QObject::connect(viewer,   &ViewerWidget3D::sceneChanged,
                      outliner, &OutlinerWidget::refresh);
+    QObject::connect(viewer,   &ViewerWidget3D::selectionChanged,
+                     outliner, &OutlinerWidget::selectNode);
+    QObject::connect(outliner, &OutlinerWidget::selectionChanged,
+                     viewer,   &ViewerWidget3D::selectNode);
 
     MainWindow window;
     window.applyMenuContext(menuCtx);

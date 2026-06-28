@@ -60,3 +60,13 @@ void SceneModel::refresh()
     beginResetModel();
     endResetModel();
 }
+
+QModelIndex SceneModel::indexForNode(SceneNode* node) const
+{
+    if (!node) return {};
+    const auto& siblings = node->parent ? node->parent->children : m_scene.roots();
+    for (int i = 0; i < (int)siblings.size(); ++i)
+        if (siblings[i].get() == node)
+            return createIndex(i, 0, node);
+    return {};
+}

@@ -84,6 +84,29 @@ void ViewerWidget3D::paintGL()
     }
 }
 
+// ---- Selection -------------------------------------------------------------
+
+void ViewerWidget3D::setSelectedNode(SceneNode* node)
+{
+    if (m_selectedNode && m_selectedNode->object)
+        m_selectedNode->object->selected = false;
+    m_selectedNode = node;
+    if (m_selectedNode && m_selectedNode->object)
+        m_selectedNode->object->selected = true;
+    emit selectionChanged(m_selectedNode);
+}
+
+void ViewerWidget3D::selectNode(SceneNode* node)
+{
+    // Appelé depuis l'Outliner — on ne ré-émet pas selectionChanged pour éviter le cycle
+    if (m_selectedNode && m_selectedNode->object)
+        m_selectedNode->object->selected = false;
+    m_selectedNode = node;
+    if (m_selectedNode && m_selectedNode->object)
+        m_selectedNode->object->selected = true;
+    update();
+}
+
 // ---- Public slot -----------------------------------------------------------
 
 void ViewerWidget3D::addToScene(const std::string& name,
@@ -277,13 +300,9 @@ void ViewerWidget3D::mousePressEvent(QMouseEvent* event)
             }
         }
         if (!gizmoConsumed) {
-            if (m_selectedNode) m_selectedNode->object->selected = false;
             SceneNode* hit = pickNode(mx, my);
-            m_selectedNode = hit;
-            if (m_selectedNode)
-                m_selectedNode->object->selected = true;
-            else
-                m_leftDown = true;
+            setSelectedNode(hit);
+            if (!hit) m_leftDown = true;
         }
     }
 

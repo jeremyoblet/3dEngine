@@ -12,6 +12,10 @@ public:
     explicit OutlinerWidget(const Scene& scene, QWidget* parent = nullptr);
 
     void refresh();
+    void selectNode(SceneNode* node);
+
+signals:
+    void selectionChanged(SceneNode* node);
 
 private:
     SceneModel* m_model;
