@@ -10,6 +10,7 @@
 #include "Objects/Primitives/Cube.h"
 #include "Objects/Primitives/Triangle.h"
 #include "Objects/Primitives/Sphere.h"
+#include "Objects/Lights/PointLightObject.h"
 
 int main(int argc, char* argv[])
 {
@@ -43,7 +44,9 @@ int main(int argc, char* argv[])
     menuCtx.addMenu("Création", {
         { "Cube",     [viewer] { viewer->addToScene("Cube",     [] { return std::make_unique<Cube>(); }); }},
         { "Sphère",   [viewer] { viewer->addToScene("Sphère",   [] { return std::make_unique<Sphere>(); }); }},
-        { "Triangle", [viewer] { viewer->addToScene("Triangle", [] { return std::make_unique<Triangle>(); }); }},
+        { "Triangle",     [viewer] { viewer->addToScene("Triangle",     [] { return std::make_unique<Triangle>(); }); }},
+        MenuAction::Separator(),
+        { "Point Light",  [viewer] { viewer->addToScene("Point Light", [] { return std::make_unique<PointLightObject>(); }); }},
     });
 
     QObject::connect(viewer,   &ViewerWidget3D::sceneChanged,

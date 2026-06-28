@@ -54,6 +54,8 @@ qt_add_executable(MyEngine
 
     # Lights
     src/Objects/Lights/PointLight.h
+    src/Objects/Lights/PointLightObject.h
+    src/Objects/Lights/PointLightObject.cpp
 
     # Primitives
     src/Objects/Primitives/Triangle.h
