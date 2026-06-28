@@ -1,6 +1,8 @@
-#include "Triangle.h"
+#include "Sphere.h"
 #include "Core/Mesh.h"
 #include "Core/Material.h"
+#include <cmath>
+#include <vector>
 
 static const char* VERT_SRC = R"(
     #version 450 core
@@ -53,21 +55,43 @@ static const char* FRAG_SRC = R"(
     }
 )";
 
-// pos(3) + normal(3) + color(3) — double face (front + back)
-static const std::vector<float> VERTICES = {
-    // Face avant  normale (0,0,1)  bleu
-    -0.5f, -0.5f,  0.0f,  0.0f, 0.0f, 1.0f,  0.2f, 0.6f, 1.0f,
-     0.5f, -0.5f,  0.0f,  0.0f, 0.0f, 1.0f,  0.2f, 0.6f, 1.0f,
-     0.0f,  0.5f,  0.0f,  0.0f, 0.0f, 1.0f,  0.2f, 0.6f, 1.0f,
-    // Face arrière normale (0,0,-1)
-     0.5f, -0.5f,  0.0f,  0.0f, 0.0f,-1.0f,  0.2f, 0.6f, 1.0f,
-    -0.5f, -0.5f,  0.0f,  0.0f, 0.0f,-1.0f,  0.2f, 0.6f, 1.0f,
-     0.0f,  0.5f,  0.0f,  0.0f, 0.0f,-1.0f,  0.2f, 0.6f, 1.0f,
-};
+static std::vector<float> generateVertices()
+{
+    constexpr int   RINGS   = 16;
+    constexpr int   SECTORS = 32;
+    constexpr float PI      = 3.14159265358979f;
+    constexpr float R       = 0.5f; // rayon → bounding box de 1 unité
 
-Triangle::Triangle()
+    std::vector<float> v;
+    v.reserve(6 * RINGS * SECTORS * 9);
+
+    auto push = [&](float phi, float theta) {
+        float nx = std::sin(phi) * std::cos(theta);
+        float ny = std::cos(phi);
+        float nz = std::sin(phi) * std::sin(theta);
+        v.push_back(nx * R); v.push_back(ny * R); v.push_back(nz * R); // position
+        v.push_back(nx);     v.push_back(ny);     v.push_back(nz);     // normale
+        v.push_back(0.2f);   v.push_back(0.8f);   v.push_back(0.7f);  // couleur teal
+    };
+
+    for (int r = 0; r < RINGS; ++r) {
+        for (int s = 0; s < SECTORS; ++s) {
+            float phi0   = PI * r       / RINGS;
+            float phi1   = PI * (r + 1) / RINGS;
+            float theta0 = 2.0f * PI * s       / SECTORS;
+            float theta1 = 2.0f * PI * (s + 1) / SECTORS;
+
+            push(phi0, theta0); push(phi1, theta0); push(phi1, theta1);
+            push(phi0, theta0); push(phi1, theta1); push(phi0, theta1);
+        }
+    }
+
+    return v;
+}
+
+Sphere::Sphere()
     : Object(
-        std::make_unique<Mesh>(VERTICES, 9,
+        std::make_unique<Mesh>(generateVertices(), 9,
             std::vector<Mesh::Attrib>{
                 { 0, 3, 0 },
                 { 1, 3, 3 },

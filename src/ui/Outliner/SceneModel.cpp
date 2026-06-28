@@ -54,3 +54,9 @@ QVariant SceneModel::data(const QModelIndex& index, int role) const
     auto* node = static_cast<SceneNode*>(index.internalPointer());
     return QString::fromStdString(node->name);
 }
+
+void SceneModel::refresh()
+{
+    beginResetModel();
+    endResetModel();
+}

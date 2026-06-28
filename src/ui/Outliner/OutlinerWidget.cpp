@@ -16,3 +16,8 @@ OutlinerWidget::OutlinerWidget(const Scene& scene, QWidget* parent)
     layout->setContentsMargins(0, 0, 0, 0);
     layout->addWidget(m_view);
 }
+
+void OutlinerWidget::refresh()
+{
+    m_model->refresh();
+}

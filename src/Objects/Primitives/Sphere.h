@@ -1,7 +1,7 @@
 #pragma once
 #include "Core/Object.h"
 
-class Triangle : public Object {
+class Sphere : public Object {
 public:
-    Triangle();
+    Sphere();
 };

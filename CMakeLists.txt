@@ -60,6 +60,8 @@ qt_add_executable(MyEngine
     src/Objects/Primitives/Triangle.cpp
     src/Objects/Primitives/Cube.h
     src/Objects/Primitives/Cube.cpp
+    src/Objects/Primitives/Sphere.h
+    src/Objects/Primitives/Sphere.cpp
 
     # Display
     src/Objects/Display/Grid.h

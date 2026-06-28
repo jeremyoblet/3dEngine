@@ -11,6 +11,8 @@ class OutlinerWidget : public QWidget {
 public:
     explicit OutlinerWidget(const Scene& scene, QWidget* parent = nullptr);
 
+    void refresh();
+
 private:
     SceneModel* m_model;
     QTreeView*  m_view;

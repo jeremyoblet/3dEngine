@@ -14,6 +14,8 @@ public:
     int         columnCount(const QModelIndex& parent = {})               const override;
     QVariant    data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
 
+    void refresh();
+
 private:
     const Scene& m_scene;
 };

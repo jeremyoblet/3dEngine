@@ -1,6 +1,7 @@
 #include "ViewerWidget3D.h"
 
 #include <algorithm>
+#include <limits>
 #include <QTimer>
 #include <QKeyEvent>
 #include <QMouseEvent>
@@ -17,8 +18,8 @@
 
 // ---- Ctor / Dtor -----------------------------------------------------------
 
-ViewerWidget3D::ViewerWidget3D(QWidget* parent)
-    : QOpenGLWidget(parent)
+ViewerWidget3D::ViewerWidget3D(Scene& scene, QWidget* parent)
+    : QOpenGLWidget(parent), m_scene(scene)
 {
     setFocusPolicy(Qt::StrongFocus);
     setMouseTracking(true);
@@ -34,7 +35,6 @@ void ViewerWidget3D::initializeGL()
         return reinterpret_cast<void*>(QOpenGLContext::currentContext()->getProcAddress(name));
     });
 
-    m_cube             = std::make_unique<Cube>();
     m_grid             = std::make_unique<Grid>();
     m_gizmoTranslation = std::make_unique<GizmoTranslation>();
     m_gizmoRotation    = std::make_unique<GizmoRotation>();
@@ -44,7 +44,7 @@ void ViewerWidget3D::initializeGL()
 
     m_timer = new QTimer(this);
     connect(m_timer, &QTimer::timeout, this, QOverload<>::of(&ViewerWidget3D::update));
-    m_timer->start(16); // ~60 fps
+    m_timer->start(16);
 }
 
 void ViewerWidget3D::resizeGL(int w, int h)
@@ -62,27 +62,69 @@ void ViewerWidget3D::paintGL()
     m_view = m_camera.getView();
     m_proj = m_camera.getProjection(aspect);
 
-    m_gizmoVisualScale = glm::length(m_camera.getPosition() - m_cube->transform.position) * 0.18f;
-
     const DrawContext ctx { m_view, m_proj, m_camera.getPosition(), m_light };
-    const glm::mat4  gridMVP = m_proj * m_view * glm::mat4(1.0f);
+    m_grid->draw(m_proj * m_view * glm::mat4(1.0f));
+    m_scene.draw(ctx);
 
-    m_grid->draw(gridMVP);
-    m_cube->draw(ctx);
+    if (m_selectedNode && m_selectedNode->object) {
+        const glm::vec3& pos = m_selectedNode->object->transform.position;
+        m_gizmoVisualScale = glm::length(m_camera.getPosition() - pos) * 0.18f;
 
-    if (m_cube->selected) {
         switch (m_activeGizmo) {
             case GizmoMode::Translation:
-                m_gizmoTranslation->draw(m_view, m_proj, m_cube->transform.position, m_gizmoVisualScale);
+                m_gizmoTranslation->draw(m_view, m_proj, pos, m_gizmoVisualScale);
                 break;
             case GizmoMode::Rotation:
-                m_gizmoRotation->draw(m_view, m_proj, m_cube->transform.position, m_gizmoVisualScale);
+                m_gizmoRotation->draw(m_view, m_proj, pos, m_gizmoVisualScale);
                 break;
             case GizmoMode::Scale:
-                m_gizmoScale->draw(m_view, m_proj, m_cube->transform.position, m_gizmoVisualScale);
+                m_gizmoScale->draw(m_view, m_proj, pos, m_gizmoVisualScale);
                 break;
         }
     }
+}
+
+// ---- Public slot -----------------------------------------------------------
+
+void ViewerWidget3D::addToScene(const std::string& name,
+                                  std::function<std::unique_ptr<Object>()> factory)
+{
+    makeCurrent();
+    m_scene.addObject(name, factory());
+    doneCurrent();
+    update();
+    emit sceneChanged();
+}
+
+// ---- Scene traversal -------------------------------------------------------
+
+void ViewerWidget3D::traverseNodes(const std::vector<std::unique_ptr<SceneNode>>& nodes,
+                                    const std::function<void(SceneNode&)>& fn) const
+{
+    for (const auto& node : nodes) {
+        fn(*node);
+        traverseNodes(node->children, fn);
+    }
+}
+
+SceneNode* ViewerWidget3D::pickNode(double mx, double my) const
+{
+    const glm::vec3 ro     = m_camera.getPosition();
+    const glm::vec3 rd     = getCameraRay(mx, my);
+    SceneNode*      result = nullptr;
+    float           minDist = std::numeric_limits<float>::max();
+
+    traverseNodes(m_scene.roots(), [&](SceneNode& node) {
+        if (!node.object) return;
+        const glm::vec3& s      = node.object->transform.scale;
+        float            radius = 0.866f * std::max({ s.x, s.y, s.z });
+        if (rayHitsSphere(ro, rd, node.object->transform.position, radius)) {
+            float dist = glm::length(node.object->transform.position - ro);
+            if (dist < minDist) { minDist = dist; result = &node; }
+        }
+    });
+
+    return result;
 }
 
 // ---- Helpers ---------------------------------------------------------------
@@ -115,16 +157,18 @@ glm::vec2 ViewerWidget3D::worldToScreen(glm::vec3 p) const
 
 glm::vec2 ViewerWidget3D::screenAxisDir(int axis) const
 {
+    if (!m_selectedNode) return glm::vec2(0.0f);
     static constexpr glm::vec3 dirs[3] = { {1,0,0}, {0,1,0}, {0,0,1} };
-    const glm::vec3& pos = m_cube->transform.position;
+    const glm::vec3& pos = m_selectedNode->object->transform.position;
     return worldToScreen(pos + dirs[axis]) - worldToScreen(pos);
 }
 
 int ViewerWidget3D::gizmoHitTest(double mx, double my) const
 {
+    if (!m_selectedNode) return -1;
     static constexpr glm::vec3 dirs[3] = { {1,0,0}, {0,1,0}, {0,0,1} };
-    const glm::vec3& pos   = m_cube->transform.position;
-    const glm::vec2  mouse = { (float)mx, (float)my };
+    const glm::vec3& pos    = m_selectedNode->object->transform.position;
+    const glm::vec2  mouse  = { (float)mx, (float)my };
     const glm::vec2  origin = worldToScreen(pos);
     constexpr float  THRESH = 12.0f;
 
@@ -144,11 +188,12 @@ int ViewerWidget3D::gizmoHitTest(double mx, double my) const
 
 int ViewerWidget3D::scaleHitTest(double mx, double my) const
 {
-    return gizmoHitTest(mx, my); // même géométrie, logique identique
+    return gizmoHitTest(mx, my);
 }
 
 int ViewerWidget3D::rotationHitTest(double mx, double my) const
 {
+    if (!m_selectedNode) return -1;
     constexpr int   N      = 64;
     constexpr float TWO_PI = 6.28318530718f;
 
@@ -160,12 +205,11 @@ int ViewerWidget3D::rotationHitTest(double mx, double my) const
     };
 
     const glm::vec2  mouse  = { (float)mx, (float)my };
-    const glm::vec3& pos    = m_cube->transform.position;
+    const glm::vec3& pos    = m_selectedNode->object->transform.position;
     constexpr float  THRESH = 10.0f;
 
     int   best = -1;
     float minD = THRESH;
-
     for (int ri = 0; ri < 3; ++ri) {
         for (int i = 0; i < N; ++i) {
             float a0 = TWO_PI * i       / N;
@@ -194,12 +238,14 @@ void ViewerWidget3D::keyPressEvent(QKeyEvent* event)
         case Qt::Key_E: m_activeGizmo = GizmoMode::Rotation;    break;
         case Qt::Key_R: m_activeGizmo = GizmoMode::Scale;       break;
         case Qt::Key_Z:
-            if (m_cube) m_cube->wireframe = !m_cube->wireframe;
+            if (m_selectedNode && m_selectedNode->object)
+                m_selectedNode->object->wireframe = !m_selectedNode->object->wireframe;
             break;
         case Qt::Key_F:
-            if (m_cube && m_cube->selected) {
-                const glm::vec3& s = m_cube->transform.scale;
-                m_camera.focusOn(m_cube->transform.position, std::max({ s.x, s.y, s.z }));
+            if (m_selectedNode && m_selectedNode->object) {
+                const glm::vec3& s = m_selectedNode->object->transform.scale;
+                m_camera.focusOn(m_selectedNode->object->transform.position,
+                                 std::max({ s.x, s.y, s.z }));
             }
             break;
         default:
@@ -214,7 +260,7 @@ void ViewerWidget3D::mousePressEvent(QMouseEvent* event)
 
     if (event->button() == Qt::LeftButton) {
         bool gizmoConsumed = false;
-        if (m_cube && m_cube->selected) {
+        if (m_selectedNode) {
             switch (m_activeGizmo) {
                 case GizmoMode::Translation:
                     m_dragAxis = gizmoHitTest(mx, my);
@@ -230,11 +276,12 @@ void ViewerWidget3D::mousePressEvent(QMouseEvent* event)
                     break;
             }
         }
-        if (!gizmoConsumed && m_cube) {
-            const glm::vec3& s = m_cube->transform.scale;
-            float radius = 0.866f * std::max({ s.x, s.y, s.z });
-            if (rayHitsSphere(m_camera.getPosition(), getCameraRay(mx, my), m_cube->transform.position, radius))
-                m_cube->selected = !m_cube->selected;
+        if (!gizmoConsumed) {
+            if (m_selectedNode) m_selectedNode->object->selected = false;
+            SceneNode* hit = pickNode(mx, my);
+            m_selectedNode = hit;
+            if (m_selectedNode)
+                m_selectedNode->object->selected = true;
             else
                 m_leftDown = true;
         }
@@ -268,27 +315,28 @@ void ViewerWidget3D::mouseMoveEvent(QMouseEvent* event)
 
     static constexpr glm::vec3 axisDirs[3] = { {1,0,0}, {0,1,0}, {0,0,1} };
 
-    if (m_dragAxis >= 0) {
+    if (m_selectedNode && m_dragAxis >= 0) {
         glm::vec2 sa  = screenAxisDir(m_dragAxis);
         float     len = glm::length(sa);
         if (len > 1.0f) {
             float delta = (dx * sa.x + dy * sa.y) / (len * len);
-            m_cube->transform.position += axisDirs[m_dragAxis] * delta;
+            m_selectedNode->object->transform.position += axisDirs[m_dragAxis] * delta;
         }
-    } else if (m_rotationDragAxis >= 0) {
-        const glm::vec3& pos = m_cube->transform.position;
+    } else if (m_selectedNode && m_rotationDragAxis >= 0) {
+        const glm::vec3& pos = m_selectedNode->object->transform.position;
         glm::vec2 sa  = worldToScreen(pos + axisDirs[m_rotationDragAxis]) - worldToScreen(pos);
         float     len = glm::length(sa);
         if (len > 1.0f) {
             glm::vec2 perp = glm::vec2(-sa.y, sa.x) / len;
-            m_cube->transform.rotation[m_rotationDragAxis] += (dx * perp.x + dy * perp.y) * 0.5f;
+            m_selectedNode->object->transform.rotation[m_rotationDragAxis] +=
+                (dx * perp.x + dy * perp.y) * 0.5f;
         }
-    } else if (m_scaleDragAxis >= 0) {
+    } else if (m_selectedNode && m_scaleDragAxis >= 0) {
         glm::vec2 sa  = screenAxisDir(m_scaleDragAxis);
         float     len = glm::length(sa);
         if (len > 1.0f) {
-            float delta = (dx * sa.x + dy * sa.y) / (len * len);
-            float& s    = m_cube->transform.scale[m_scaleDragAxis];
+            float  delta = (dx * sa.x + dy * sa.y) / (len * len);
+            float& s     = m_selectedNode->object->transform.scale[m_scaleDragAxis];
             s = std::max(0.01f, s + delta * 1.5f);
         }
     } else {

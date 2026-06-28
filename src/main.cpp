@@ -7,6 +7,9 @@
 #include "ui/Outliner/OutlinerWidget.h"
 #include "ui/Viewers/3d/ViewerWidget3D.h"
 #include "Core/Scene.h"
+#include "Objects/Primitives/Cube.h"
+#include "Objects/Primitives/Triangle.h"
+#include "Objects/Primitives/Sphere.h"
 
 int main(int argc, char* argv[])
 {
@@ -21,11 +24,14 @@ int main(int argc, char* argv[])
 
     Scene scene;
 
+    auto* viewer   = new ViewerWidget3D(scene);
+    auto* outliner = new OutlinerWidget(scene);
+
     MenuContext menuCtx;
     menuCtx.addMenu("File", {
         { "New Scene", [] { /* TODO */ } },
         MenuAction::Separator(),
-        { "Quit",      [] { QApplication::quit(); } },
+        { "Quit", [] { QApplication::quit(); } },
     });
     menuCtx.addMenu("Edit", {
         { "Undo", [] { /* TODO */ } },
@@ -34,13 +40,21 @@ int main(int argc, char* argv[])
     menuCtx.addMenu("View", {
         { "Outliner", [] { /* TODO */ } },
     });
+    menuCtx.addMenu("Création", {
+        { "Cube",     [viewer] { viewer->addToScene("Cube",     [] { return std::make_unique<Cube>(); }); }},
+        { "Sphère",   [viewer] { viewer->addToScene("Sphère",   [] { return std::make_unique<Sphere>(); }); }},
+        { "Triangle", [viewer] { viewer->addToScene("Triangle", [] { return std::make_unique<Triangle>(); }); }},
+    });
+
+    QObject::connect(viewer, &ViewerWidget3D::sceneChanged,
+                     outliner, &OutlinerWidget::refresh);
 
     MainWindow window;
     window.applyMenuContext(menuCtx);
 
     auto* splitter = new QSplitter(Qt::Horizontal, &window);
-    splitter->addWidget(new OutlinerWidget(scene, &window));
-    splitter->addWidget(new ViewerWidget3D(&window));
+    splitter->addWidget(outliner);
+    splitter->addWidget(viewer);
     splitter->setStretchFactor(0, 1);
     splitter->setStretchFactor(1, 4);
 
