@@ -37,7 +37,6 @@ protected:
     void resizeGL(int w, int h) override;
     void paintGL() override;
 
-    void paintEvent(QPaintEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
@@ -76,6 +75,11 @@ private:
     GizmoMode m_activeGizmo = GizmoMode::Translation;
 
     QTimer* m_timer = nullptr;
+
+    // Rectangle de sélection marquee (pur OpenGL, sans QPainter)
+    GLuint m_marqueeProgram = 0;
+    GLuint m_marqueeVao     = 0;
+    GLuint m_marqueeVbo     = 0;
 
     void setSelection(std::vector<SceneNode*> nodes); // remplace la sélection et émet selectionChanged
     void setSelectedNode(SceneNode* node);             // sélection simple

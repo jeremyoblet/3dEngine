@@ -7,9 +7,6 @@
 #include <QMouseEvent>
 #include <QWheelEvent>
 #include <QOpenGLContext>
-#include <QPainter>
-#include <QPaintEvent>
-#include <QRect>
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "Core/DrawContext.h"
@@ -29,7 +26,16 @@ ViewerWidget3D::ViewerWidget3D(Scene& scene, QWidget* parent)
     setMouseTracking(true);
 }
 
-ViewerWidget3D::~ViewerWidget3D() = default;
+ViewerWidget3D::~ViewerWidget3D()
+{
+    if (m_marqueeVao) {
+        makeCurrent();
+        glDeleteVertexArrays(1, &m_marqueeVao);
+        glDeleteBuffers(1, &m_marqueeVbo);
+        glDeleteProgram(m_marqueeProgram);
+        doneCurrent();
+    }
+}
 
 // ---- OpenGL lifecycle ------------------------------------------------------
 
@@ -43,6 +49,42 @@ void ViewerWidget3D::initializeGL()
     m_gizmoTranslation = std::make_unique<GizmoTranslation>();
     m_gizmoRotation    = std::make_unique<GizmoRotation>();
     m_gizmoScale       = std::make_unique<GizmoScale>();
+
+    // Shader 2D pour le rectangle de sélection marquee
+    static const char* MQ_VERT = R"(
+        #version 450 core
+        layout(location = 0) in vec2 aPos;
+        void main() { gl_Position = vec4(aPos, 0.0, 1.0); }
+    )";
+    static const char* MQ_FRAG = R"(
+        #version 450 core
+        uniform vec4 uColor;
+        out vec4 FragColor;
+        void main() { FragColor = uColor; }
+    )";
+    auto compileShader = [](GLenum type, const char* src) {
+        GLuint s = glCreateShader(type);
+        glShaderSource(s, 1, &src, nullptr);
+        glCompileShader(s);
+        return s;
+    };
+    GLuint vs = compileShader(GL_VERTEX_SHADER,   MQ_VERT);
+    GLuint fs = compileShader(GL_FRAGMENT_SHADER, MQ_FRAG);
+    m_marqueeProgram = glCreateProgram();
+    glAttachShader(m_marqueeProgram, vs);
+    glAttachShader(m_marqueeProgram, fs);
+    glLinkProgram(m_marqueeProgram);
+    glDeleteShader(vs);
+    glDeleteShader(fs);
+
+    glGenVertexArrays(1, &m_marqueeVao);
+    glGenBuffers(1, &m_marqueeVbo);
+    glBindVertexArray(m_marqueeVao);
+    glBindBuffer(GL_ARRAY_BUFFER, m_marqueeVbo);
+    glBufferData(GL_ARRAY_BUFFER, 8 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
+    glEnableVertexAttribArray(0);
+    glBindVertexArray(0);
 
     glEnable(GL_DEPTH_TEST);
 
@@ -58,6 +100,11 @@ void ViewerWidget3D::resizeGL(int w, int h)
 
 void ViewerWidget3D::paintGL()
 {
+    // Réinitialise l'état GL à chaque frame (protection contre les résidus d'un frame précédent)
+    glEnable(GL_DEPTH_TEST);
+    glDepthMask(GL_TRUE);
+    glDisable(GL_BLEND);
+
     glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
     glStencilMask(0xFF);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
@@ -93,6 +140,36 @@ void ViewerWidget3D::paintGL()
                 m_gizmoScale->draw(m_view, m_proj, pos, m_gizmoVisualScale);
                 break;
         }
+    }
+
+    // Rectangle de sélection marquee — dessiné en dernier, en pur OpenGL
+    if (m_marqueeActive) {
+        const float x0 =  2.0f * m_marqueeStart.x() / (float)width()  - 1.0f;
+        const float y0 =  1.0f - 2.0f * m_marqueeStart.y() / (float)height();
+        const float x1 =  2.0f * (float)m_lastX / (float)width()  - 1.0f;
+        const float y1 =  1.0f - 2.0f * (float)m_lastY / (float)height();
+        const float verts[8] = { x0,y0, x1,y0, x1,y1, x0,y1 };
+
+        glBindBuffer(GL_ARRAY_BUFFER, m_marqueeVbo);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
+
+        glUseProgram(m_marqueeProgram);
+        const GLint colorLoc = glGetUniformLocation(m_marqueeProgram, "uColor");
+
+        glDisable(GL_DEPTH_TEST);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glBindVertexArray(m_marqueeVao);
+
+        glUniform4f(colorLoc, 0.39f, 0.67f, 1.0f, 0.12f); // remplissage bleu pâle
+        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+
+        glUniform4f(colorLoc, 0.39f, 0.67f, 1.0f, 0.78f); // contour bleu
+        glDrawArrays(GL_LINE_LOOP, 0, 4);
+
+        glBindVertexArray(0);
+        glEnable(GL_DEPTH_TEST);
+        glDisable(GL_BLEND);
     }
 }
 
@@ -311,19 +388,6 @@ int ViewerWidget3D::rotationHitTest(double mx, double my) const
 }
 
 // ---- Events ----------------------------------------------------------------
-
-void ViewerWidget3D::paintEvent(QPaintEvent* event)
-{
-    QOpenGLWidget::paintEvent(event); // composite le rendu OpenGL
-
-    if (m_marqueeActive) {
-        QRect rect = QRect(m_marqueeStart, QPoint((int)m_lastX, (int)m_lastY)).normalized();
-        QPainter painter(this);
-        painter.setPen(QPen(QColor(100, 170, 255, 200), 1));
-        painter.setBrush(QColor(100, 170, 255, 30));
-        painter.drawRect(rect);
-    }
-}
 
 void ViewerWidget3D::keyPressEvent(QKeyEvent* event)
 {
