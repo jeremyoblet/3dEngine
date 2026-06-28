@@ -20,4 +20,5 @@ signals:
 private:
     SceneModel* m_model;
     QTreeView*  m_view;
+    bool        m_blockSelectionSignal = false;
 };

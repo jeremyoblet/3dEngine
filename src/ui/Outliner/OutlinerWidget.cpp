@@ -15,6 +15,7 @@ OutlinerWidget::OutlinerWidget(const Scene& scene, QWidget* parent)
 
     connect(m_view->selectionModel(), &QItemSelectionModel::selectionChanged,
             this, [this](const QItemSelection& selected, const QItemSelection&) {
+        if (m_blockSelectionSignal) return;
         const auto indexes = selected.indexes();
         SceneNode* node = indexes.isEmpty()
             ? nullptr
@@ -34,14 +35,15 @@ void OutlinerWidget::refresh()
 
 void OutlinerWidget::selectNode(SceneNode* node)
 {
-    QSignalBlocker blocker(m_view->selectionModel());
+    m_blockSelectionSignal = true;
     if (!node) {
         m_view->clearSelection();
-        return;
+    } else {
+        QModelIndex idx = m_model->indexForNode(node);
+        if (idx.isValid()) {
+            m_view->setCurrentIndex(idx);
+            m_view->scrollTo(idx);
+        }
     }
-    QModelIndex idx = m_model->indexForNode(node);
-    if (idx.isValid()) {
-        m_view->setCurrentIndex(idx);
-        m_view->scrollTo(idx);
-    }
+    m_blockSelectionSignal = false;
 }
