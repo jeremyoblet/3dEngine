@@ -1,0 +1,306 @@
+#include "ViewerWidget3D.h"
+
+#include <algorithm>
+#include <QTimer>
+#include <QKeyEvent>
+#include <QMouseEvent>
+#include <QWheelEvent>
+#include <QOpenGLContext>
+#include <glm/gtc/matrix_transform.hpp>
+
+#include "Core/DrawContext.h"
+#include "Objects/Primitives/Cube.h"
+#include "Objects/Display/Grid.h"
+#include "Objects/Display/Gizmo/GizmoTranslation.h"
+#include "Objects/Display/Gizmo/GizmoRotation.h"
+#include "Objects/Display/Gizmo/GizmoScale.h"
+
+// ---- Ctor / Dtor -----------------------------------------------------------
+
+ViewerWidget3D::ViewerWidget3D(QWidget* parent)
+    : QOpenGLWidget(parent)
+{
+    setFocusPolicy(Qt::StrongFocus);
+    setMouseTracking(true);
+}
+
+ViewerWidget3D::~ViewerWidget3D() = default;
+
+// ---- OpenGL lifecycle ------------------------------------------------------
+
+void ViewerWidget3D::initializeGL()
+{
+    gladLoadGLLoader([](const char* name) -> void* {
+        return reinterpret_cast<void*>(QOpenGLContext::currentContext()->getProcAddress(name));
+    });
+
+    m_cube             = std::make_unique<Cube>();
+    m_grid             = std::make_unique<Grid>();
+    m_gizmoTranslation = std::make_unique<GizmoTranslation>();
+    m_gizmoRotation    = std::make_unique<GizmoRotation>();
+    m_gizmoScale       = std::make_unique<GizmoScale>();
+
+    glEnable(GL_DEPTH_TEST);
+
+    m_timer = new QTimer(this);
+    connect(m_timer, &QTimer::timeout, this, QOverload<>::of(&ViewerWidget3D::update));
+    m_timer->start(16); // ~60 fps
+}
+
+void ViewerWidget3D::resizeGL(int w, int h)
+{
+    glViewport(0, 0, w, h);
+}
+
+void ViewerWidget3D::paintGL()
+{
+    glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+    glStencilMask(0xFF);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+
+    const float aspect = width() > 0 ? static_cast<float>(width()) / height() : 1.0f;
+    m_view = m_camera.getView();
+    m_proj = m_camera.getProjection(aspect);
+
+    m_gizmoVisualScale = glm::length(m_camera.getPosition() - m_cube->transform.position) * 0.18f;
+
+    const DrawContext ctx { m_view, m_proj, m_camera.getPosition(), m_light };
+    const glm::mat4  gridMVP = m_proj * m_view * glm::mat4(1.0f);
+
+    m_grid->draw(gridMVP);
+    m_cube->draw(ctx);
+
+    if (m_cube->selected) {
+        switch (m_activeGizmo) {
+            case GizmoMode::Translation:
+                m_gizmoTranslation->draw(m_view, m_proj, m_cube->transform.position, m_gizmoVisualScale);
+                break;
+            case GizmoMode::Rotation:
+                m_gizmoRotation->draw(m_view, m_proj, m_cube->transform.position, m_gizmoVisualScale);
+                break;
+            case GizmoMode::Scale:
+                m_gizmoScale->draw(m_view, m_proj, m_cube->transform.position, m_gizmoVisualScale);
+                break;
+        }
+    }
+}
+
+// ---- Helpers ---------------------------------------------------------------
+
+glm::vec3 ViewerWidget3D::getCameraRay(double mx, double my) const
+{
+    const float nx = 2.0f * (float)mx / width()  - 1.0f;
+    const float ny = 1.0f - 2.0f * (float)my / height();
+    glm::mat4 invPV = glm::inverse(m_proj * m_view);
+    glm::vec4 near4 = invPV * glm::vec4(nx, ny, -1.0f, 1.0f); near4 /= near4.w;
+    glm::vec4 far4  = invPV * glm::vec4(nx, ny,  1.0f, 1.0f); far4  /= far4.w;
+    return glm::normalize(glm::vec3(far4) - glm::vec3(near4));
+}
+
+bool ViewerWidget3D::rayHitsSphere(glm::vec3 ro, glm::vec3 rd, glm::vec3 center, float radius) const
+{
+    glm::vec3 oc = ro - center;
+    float b = glm::dot(oc, rd);
+    float c = glm::dot(oc, oc) - radius * radius;
+    return (b * b - c) >= 0.0f;
+}
+
+glm::vec2 ViewerWidget3D::worldToScreen(glm::vec3 p) const
+{
+    glm::vec4 clip = m_proj * m_view * glm::vec4(p, 1.0f);
+    glm::vec3 ndc  = glm::vec3(clip) / clip.w;
+    return { (ndc.x + 1.0f) * 0.5f * width(),
+             (1.0f - ndc.y) * 0.5f * height() };
+}
+
+glm::vec2 ViewerWidget3D::screenAxisDir(int axis) const
+{
+    static constexpr glm::vec3 dirs[3] = { {1,0,0}, {0,1,0}, {0,0,1} };
+    const glm::vec3& pos = m_cube->transform.position;
+    return worldToScreen(pos + dirs[axis]) - worldToScreen(pos);
+}
+
+int ViewerWidget3D::gizmoHitTest(double mx, double my) const
+{
+    static constexpr glm::vec3 dirs[3] = { {1,0,0}, {0,1,0}, {0,0,1} };
+    const glm::vec3& pos   = m_cube->transform.position;
+    const glm::vec2  mouse = { (float)mx, (float)my };
+    const glm::vec2  origin = worldToScreen(pos);
+    constexpr float  THRESH = 12.0f;
+
+    int   best = -1;
+    float minD = THRESH;
+    for (int i = 0; i < 3; ++i) {
+        glm::vec2 tip     = worldToScreen(pos + dirs[i] * m_gizmoVisualScale);
+        glm::vec2 seg     = tip - origin;
+        float     segLen2 = glm::dot(seg, seg);
+        if (segLen2 < 1.0f) continue;
+        float t = glm::clamp(glm::dot(mouse - origin, seg) / segLen2, 0.0f, 1.0f);
+        float d = glm::length(mouse - (origin + t * seg));
+        if (d < minD) { minD = d; best = i; }
+    }
+    return best;
+}
+
+int ViewerWidget3D::scaleHitTest(double mx, double my) const
+{
+    return gizmoHitTest(mx, my); // même géométrie, logique identique
+}
+
+int ViewerWidget3D::rotationHitTest(double mx, double my) const
+{
+    constexpr int   N      = 64;
+    constexpr float TWO_PI = 6.28318530718f;
+
+    struct Ring { glm::vec3 u, v; };
+    constexpr Ring rings[3] = {
+        { {0,1,0}, {0,0,1} },
+        { {1,0,0}, {0,0,1} },
+        { {1,0,0}, {0,1,0} },
+    };
+
+    const glm::vec2  mouse  = { (float)mx, (float)my };
+    const glm::vec3& pos    = m_cube->transform.position;
+    constexpr float  THRESH = 10.0f;
+
+    int   best = -1;
+    float minD = THRESH;
+
+    for (int ri = 0; ri < 3; ++ri) {
+        for (int i = 0; i < N; ++i) {
+            float a0 = TWO_PI * i       / N;
+            float a1 = TWO_PI * (i + 1) / N;
+            glm::vec3 p0 = pos + (std::cos(a0) * rings[ri].u + std::sin(a0) * rings[ri].v) * m_gizmoVisualScale;
+            glm::vec3 p1 = pos + (std::cos(a1) * rings[ri].u + std::sin(a1) * rings[ri].v) * m_gizmoVisualScale;
+            glm::vec2 s0 = worldToScreen(p0);
+            glm::vec2 s1 = worldToScreen(p1);
+            glm::vec2 seg     = s1 - s0;
+            float     segLen2 = glm::dot(seg, seg);
+            if (segLen2 < 0.1f) continue;
+            float t = glm::clamp(glm::dot(mouse - s0, seg) / segLen2, 0.0f, 1.0f);
+            float d = glm::length(mouse - (s0 + t * seg));
+            if (d < minD) { minD = d; best = ri; }
+        }
+    }
+    return best;
+}
+
+// ---- Events ----------------------------------------------------------------
+
+void ViewerWidget3D::keyPressEvent(QKeyEvent* event)
+{
+    switch (event->key()) {
+        case Qt::Key_W: m_activeGizmo = GizmoMode::Translation; break;
+        case Qt::Key_E: m_activeGizmo = GizmoMode::Rotation;    break;
+        case Qt::Key_R: m_activeGizmo = GizmoMode::Scale;       break;
+        case Qt::Key_Z:
+            if (m_cube) m_cube->wireframe = !m_cube->wireframe;
+            break;
+        case Qt::Key_F:
+            if (m_cube && m_cube->selected) {
+                const glm::vec3& s = m_cube->transform.scale;
+                m_camera.focusOn(m_cube->transform.position, std::max({ s.x, s.y, s.z }));
+            }
+            break;
+        default:
+            QOpenGLWidget::keyPressEvent(event);
+    }
+}
+
+void ViewerWidget3D::mousePressEvent(QMouseEvent* event)
+{
+    const double mx = event->position().x();
+    const double my = event->position().y();
+
+    if (event->button() == Qt::LeftButton) {
+        bool gizmoConsumed = false;
+        if (m_cube && m_cube->selected) {
+            switch (m_activeGizmo) {
+                case GizmoMode::Translation:
+                    m_dragAxis = gizmoHitTest(mx, my);
+                    gizmoConsumed = m_dragAxis >= 0;
+                    break;
+                case GizmoMode::Rotation:
+                    m_rotationDragAxis = rotationHitTest(mx, my);
+                    gizmoConsumed = m_rotationDragAxis >= 0;
+                    break;
+                case GizmoMode::Scale:
+                    m_scaleDragAxis = scaleHitTest(mx, my);
+                    gizmoConsumed = m_scaleDragAxis >= 0;
+                    break;
+            }
+        }
+        if (!gizmoConsumed && m_cube) {
+            const glm::vec3& s = m_cube->transform.scale;
+            float radius = 0.866f * std::max({ s.x, s.y, s.z });
+            if (rayHitsSphere(m_camera.getPosition(), getCameraRay(mx, my), m_cube->transform.position, radius))
+                m_cube->selected = !m_cube->selected;
+            else
+                m_leftDown = true;
+        }
+    }
+
+    if (event->button() == Qt::MiddleButton)
+        m_middleDown = true;
+
+    m_lastX = mx;
+    m_lastY = my;
+}
+
+void ViewerWidget3D::mouseReleaseEvent(QMouseEvent* event)
+{
+    if (event->button() == Qt::LeftButton) {
+        m_leftDown         = false;
+        m_dragAxis         = -1;
+        m_rotationDragAxis = -1;
+        m_scaleDragAxis    = -1;
+    }
+    if (event->button() == Qt::MiddleButton)
+        m_middleDown = false;
+}
+
+void ViewerWidget3D::mouseMoveEvent(QMouseEvent* event)
+{
+    const double x  = event->position().x();
+    const double y  = event->position().y();
+    const float  dx = static_cast<float>(x - m_lastX);
+    const float  dy = static_cast<float>(y - m_lastY);
+
+    static constexpr glm::vec3 axisDirs[3] = { {1,0,0}, {0,1,0}, {0,0,1} };
+
+    if (m_dragAxis >= 0) {
+        glm::vec2 sa  = screenAxisDir(m_dragAxis);
+        float     len = glm::length(sa);
+        if (len > 1.0f) {
+            float delta = (dx * sa.x + dy * sa.y) / (len * len);
+            m_cube->transform.position += axisDirs[m_dragAxis] * delta;
+        }
+    } else if (m_rotationDragAxis >= 0) {
+        const glm::vec3& pos = m_cube->transform.position;
+        glm::vec2 sa  = worldToScreen(pos + axisDirs[m_rotationDragAxis]) - worldToScreen(pos);
+        float     len = glm::length(sa);
+        if (len > 1.0f) {
+            glm::vec2 perp = glm::vec2(-sa.y, sa.x) / len;
+            m_cube->transform.rotation[m_rotationDragAxis] += (dx * perp.x + dy * perp.y) * 0.5f;
+        }
+    } else if (m_scaleDragAxis >= 0) {
+        glm::vec2 sa  = screenAxisDir(m_scaleDragAxis);
+        float     len = glm::length(sa);
+        if (len > 1.0f) {
+            float delta = (dx * sa.x + dy * sa.y) / (len * len);
+            float& s    = m_cube->transform.scale[m_scaleDragAxis];
+            s = std::max(0.01f, s + delta * 1.5f);
+        }
+    } else {
+        if (m_leftDown)   m_camera.orbit(dx, dy);
+        if (m_middleDown) m_camera.pan(dx, dy);
+    }
+
+    m_lastX = x;
+    m_lastY = y;
+}
+
+void ViewerWidget3D::wheelEvent(QWheelEvent* event)
+{
+    m_camera.zoom(event->angleDelta().y() / 120.0f);
+}

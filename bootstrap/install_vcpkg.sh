@@ -2,19 +2,15 @@
 
 set -euo pipefail
 
-readonly VCPKG_DIRECTORY="${HOME}/dev/vcpkg"
+readonly VCPKG_DIRECTORY="${VCPKG_ROOT:-${HOME}/dev/vcpkg}"
 
 if [ -d "${VCPKG_DIRECTORY}" ]; then
-    echo "vcpkg already installed."
+    echo "vcpkg already installed at ${VCPKG_DIRECTORY}."
     exit 0
 fi
 
-mkdir -p "${HOME}/dev"
+mkdir -p "$(dirname "${VCPKG_DIRECTORY}")"
 
-cd "${HOME}/dev"
+git clone https://github.com/microsoft/vcpkg.git "${VCPKG_DIRECTORY}"
 
-git clone https://github.com/microsoft/vcpkg.git
-
-cd vcpkg
-
-./bootstrap-vcpkg.sh
+"${VCPKG_DIRECTORY}/bootstrap-vcpkg.sh"
