@@ -26,11 +26,11 @@ public:
 
     void addToScene(const std::string& name,
                     std::function<std::unique_ptr<Object>()> factory);
-    void selectNode(SceneNode* node);
+    void selectNodes(const std::vector<SceneNode*>& nodes);
 
 signals:
     void sceneChanged();
-    void selectionChanged(SceneNode* node); // nœud primaire (premier de la sélection)
+    void selectionChanged(const std::vector<SceneNode*>& nodes);
 
 protected:
     void initializeGL() override;

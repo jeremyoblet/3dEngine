@@ -1,4 +1,5 @@
 #pragma once
+#include <vector>
 #include <QWidget>
 #include "Core/Scene.h"
 
@@ -12,10 +13,10 @@ public:
     explicit OutlinerWidget(const Scene& scene, QWidget* parent = nullptr);
 
     void refresh();
-    void selectNode(SceneNode* node);
+    void selectNodes(const std::vector<SceneNode*>& nodes);
 
 signals:
-    void selectionChanged(SceneNode* node);
+    void selectionChanged(const std::vector<SceneNode*>& nodes);
 
 private:
     SceneModel* m_model;

@@ -12,15 +12,18 @@ OutlinerWidget::OutlinerWidget(const Scene& scene, QWidget* parent)
     m_view->setModel(m_model);
     m_view->setHeaderHidden(true);
     m_view->setExpandsOnDoubleClick(true);
+    m_view->setSelectionMode(QAbstractItemView::ExtendedSelection);
 
     connect(m_view->selectionModel(), &QItemSelectionModel::selectionChanged,
-            this, [this](const QItemSelection& selected, const QItemSelection&) {
+            this, [this](const QItemSelection&, const QItemSelection&) {
         if (m_blockSelectionSignal) return;
-        const auto indexes = selected.indexes();
-        SceneNode* node = indexes.isEmpty()
-            ? nullptr
-            : static_cast<SceneNode*>(indexes.first().internalPointer());
-        emit selectionChanged(node);
+        const auto indexes = m_view->selectionModel()->selectedIndexes();
+        std::vector<SceneNode*> nodes;
+        nodes.reserve(indexes.size());
+        for (const auto& idx : indexes)
+            if (idx.isValid())
+                nodes.push_back(static_cast<SceneNode*>(idx.internalPointer()));
+        emit selectionChanged(nodes);
     });
 
     auto* layout = new QVBoxLayout(this);
@@ -33,17 +36,18 @@ void OutlinerWidget::refresh()
     m_model->refresh();
 }
 
-void OutlinerWidget::selectNode(SceneNode* node)
+void OutlinerWidget::selectNodes(const std::vector<SceneNode*>& nodes)
 {
     m_blockSelectionSignal = true;
-    if (!node) {
-        m_view->clearSelection();
-    } else {
+    m_view->clearSelection();
+    for (auto* node : nodes) {
         QModelIndex idx = m_model->indexForNode(node);
-        if (idx.isValid()) {
-            m_view->setCurrentIndex(idx);
-            m_view->scrollTo(idx);
-        }
+        if (idx.isValid())
+            m_view->selectionModel()->select(idx, QItemSelectionModel::Select);
+    }
+    if (!nodes.empty()) {
+        QModelIndex primary = m_model->indexForNode(nodes.front());
+        if (primary.isValid()) m_view->scrollTo(primary);
     }
     m_blockSelectionSignal = false;
 }

@@ -109,7 +109,7 @@ void ViewerWidget3D::setSelection(std::vector<SceneNode*> nodes)
     for (auto* n : m_selection)
         if (n && n->object) n->object->selected = true;
 
-    emit selectionChanged(m_selectedNode);
+    emit selectionChanged(m_selection);
 }
 
 void ViewerWidget3D::setSelectedNode(SceneNode* node)
@@ -117,14 +117,14 @@ void ViewerWidget3D::setSelectedNode(SceneNode* node)
     setSelection(node ? std::vector<SceneNode*>{ node } : std::vector<SceneNode*>{});
 }
 
-void ViewerWidget3D::selectNode(SceneNode* node)
+void ViewerWidget3D::selectNodes(const std::vector<SceneNode*>& nodes)
 {
     // Appelé depuis l'Outliner — on ne ré-émet pas selectionChanged pour éviter le cycle
     for (auto* n : m_selection)
         if (n && n->object) n->object->selected = false;
 
-    m_selection    = node ? std::vector<SceneNode*>{ node } : std::vector<SceneNode*>{};
-    m_selectedNode = node;
+    m_selection    = nodes;
+    m_selectedNode = m_selection.empty() ? nullptr : m_selection.front();
 
     for (auto* n : m_selection)
         if (n && n->object) n->object->selected = true;

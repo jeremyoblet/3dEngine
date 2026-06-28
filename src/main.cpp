@@ -52,9 +52,9 @@ int main(int argc, char* argv[])
     QObject::connect(viewer,   &ViewerWidget3D::sceneChanged,
                      outliner, &OutlinerWidget::refresh);
     QObject::connect(viewer,   &ViewerWidget3D::selectionChanged,
-                     outliner, &OutlinerWidget::selectNode);
+                     outliner, &OutlinerWidget::selectNodes);
     QObject::connect(outliner, &OutlinerWidget::selectionChanged,
-                     viewer,   &ViewerWidget3D::selectNode);
+                     viewer,   &ViewerWidget3D::selectNodes);
 
     MainWindow window;
     window.applyMenuContext(menuCtx);
