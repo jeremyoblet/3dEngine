@@ -8,7 +8,8 @@
 class Object {
 public:
     Transform transform;
-    bool      selected = false;
+    bool      selected  = false;
+    bool      wireframe = false;
 
     Object(std::unique_ptr<Shape> shape, std::unique_ptr<Material> material);
     virtual ~Object() = default;

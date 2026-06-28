@@ -14,6 +14,7 @@ public:
     void orbit(float dx, float dy);
     void pan(float dx, float dy);
     void zoom(float delta);
+    void focusOn(glm::vec3 newTarget, float objectSize);
 
     glm::vec3 getPosition() const;
 

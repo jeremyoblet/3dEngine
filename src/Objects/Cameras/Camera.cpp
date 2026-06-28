@@ -41,3 +41,8 @@ void Camera::pan(float dx, float dy) {
 void Camera::zoom(float delta) {
     distance = std::clamp(distance - delta * 0.3f, 0.5f, 50.0f);
 }
+
+void Camera::focusOn(glm::vec3 newTarget, float objectSize) {
+    target   = newTarget;
+    distance = std::clamp(objectSize * 3.0f, 0.5f, 50.0f);
+}

@@ -1,6 +1,33 @@
 #include "Object.h"
 #include <glm/gtc/matrix_inverse.hpp>
 
+// ---- Wireframe shader -------------------------------------------------------
+
+static const char* WIREFRAME_VERT = R"(
+    #version 450 core
+    layout(location = 0) in vec3 aPos;
+    uniform mat4 uMVP;
+    void main() {
+        gl_Position = uMVP * vec4(aPos, 1.0);
+    }
+)";
+
+static const char* WIREFRAME_FRAG = R"(
+    #version 450 core
+    out vec4 FragColor;
+    void main() {
+        FragColor = vec4(1.0, 1.0, 1.0, 0.35);
+    }
+)";
+
+static Material* wireframeMaterial()
+{
+    static std::unique_ptr<Material> mat;
+    if (!mat)
+        mat = std::make_unique<Material>(WIREFRAME_VERT, WIREFRAME_FRAG);
+    return mat.get();
+}
+
 // ---- Outline shader (partagé entre tous les Object) ------------------------
 
 static const char* OUTLINE_VERT = R"(
@@ -84,6 +111,23 @@ void Object::draw(const DrawContext& ctx)
         glStencilMask(0xFF);
         glStencilFunc(GL_ALWAYS, 0, 0xFF);
         glDisable(GL_STENCIL_TEST);
+        glEnable(GL_DEPTH_TEST);
+    }
+
+    if (wireframe)
+    {
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+        glDisable(GL_DEPTH_TEST);
+
+        Material* wf = wireframeMaterial();
+        wf->use();
+        wf->set("uMVP", MVP);
+        shape->draw();
+
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        glDisable(GL_BLEND);
         glEnable(GL_DEPTH_TEST);
     }
 }

@@ -180,6 +180,13 @@ void keyCallback(GLFWwindow*, int key, int, int action, int)
     if (key == GLFW_KEY_W) activeGizmo = GizmoMode::Translation;
     if (key == GLFW_KEY_E) activeGizmo = GizmoMode::Rotation;
     if (key == GLFW_KEY_R) activeGizmo = GizmoMode::Scale;
+    if (key == GLFW_KEY_Z && g_cube)
+        g_cube->wireframe = !g_cube->wireframe;
+    if (key == GLFW_KEY_F && g_cube && g_cube->selected) {
+        const glm::vec3& s = g_cube->transform.scale;
+        float size = std::max({ s.x, s.y, s.z });
+        camera.focusOn(g_cube->transform.position, size);
+    }
 }
 
 void mouseButtonCallback(GLFWwindow* w, int btn, int action, int)
